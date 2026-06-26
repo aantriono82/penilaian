@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+  backend:
+    name: Backend Smoke Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: node --check src/index.js
+
+      - name: Start backend and verify health endpoint
+        env:
+          PORT: 3100
+          JWT_SECRET: ci-test-secret-minimum-32-characters
+          JWT_EXPIRES_IN: 7d
+          DB_PATH: ./data/ci.db
+          NODE_ENV: test
+          FRONTEND_URL: http://localhost:5173
+          OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+          OPENROUTER_HTTP_REFERER: http://localhost:5173
+          OPENROUTER_X_TITLE: Atiga Asesmen CI
+        run: |
+          mkdir -p data
+          node src/index.js > backend-ci.log 2>&1 &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID" EXIT
+
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:3100/health > /tmp/backend-health.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:3100/health
+

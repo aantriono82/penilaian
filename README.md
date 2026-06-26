@@ -95,6 +95,11 @@ Buka `http://localhost:5173`
 
 ## 🌐 Deploy ke VPS / Hosting
 
+Untuk deployment yang lebih rapi per-platform, lihat juga:
+
+- [Panduan Cloudflare Pages](docs/cloudflare-pages.md)
+- [Checklist Deploy Backend](docs/backend-deploy-checklist.md)
+
 ### Build Frontend
 
 ```bash
@@ -245,3 +250,12 @@ atiga-asesmen/
 **Database error?**
 - Pastikan folder `backend/data/` ada dan writable
 - Cek permission file: `chmod 755 backend/data`
+
+---
+
+## 🔄 CI
+
+Repo ini sekarang punya workflow GitHub Actions di [.github/workflows/ci.yml](.github/workflows/ci.yml) dengan dua job:
+
+- build frontend (`frontend/npm run build`)
+- smoke test backend (`npm ci`, `node --check`, lalu cek `GET /health`)
