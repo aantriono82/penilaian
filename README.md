@@ -99,6 +99,7 @@ Untuk deployment yang lebih rapi per-platform, lihat juga:
 
 - [Panduan Cloudflare Pages](docs/cloudflare-pages.md)
 - [Checklist Deploy Backend](docs/backend-deploy-checklist.md)
+- [Panduan GHCR untuk Arcane Docker VPS](docs/ghcr-arcane-vps.md)
 
 ### Build Frontend
 
