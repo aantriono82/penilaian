@@ -112,7 +112,7 @@ async function buildSoalTable(soal, nomor) {
       break
     }
     case 'benar_salah': {
-      // Best-effort: SekulKit simpan 1 pernyataan + 2 opsi (Benar/Salah).
+      // Best-effort: Atiga Asesmen simpan 1 pernyataan + 2 opsi (Benar/Salah).
       // Map ke format matriks Zen: kolom_jawaban=Benar,Salah; P1=pernyataan; KJ1=benar.
       rows.push(row('kolom_jawaban', 'Benar, Salah'))
       rows.push(row('input_type', 'radio'))
@@ -126,7 +126,7 @@ async function buildSoalTable(soal, nomor) {
       break
     }
     case 'menjodohkan': {
-      // Best-effort: SekulKit tidak punya struktur pasangan yang jelas.
+      // Best-effort: Atiga Asesmen tidak punya struktur pasangan yang jelas.
       // Asumsi: opsi adalah pasangan label→teks. P1/KJ1 = pasangan ke-1, dst.
       const pilihan = (soal.opsi || []).map(o => o.label).join(', ')
       rows.push(row('Pilihan', pilihan || '-'))

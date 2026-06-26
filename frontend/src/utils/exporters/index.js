@@ -3,7 +3,7 @@ import { exportZenCbt } from './zenCbt.js'
 import { exportExoCbt } from './exoCbt.js'
 
 /**
- * Mapping jenis SekulKit → kode ExoCBT (TS marker)
+ * Mapping jenis Atiga Asesmen → kode ExoCBT (TS marker)
  */
 export const EXO_TYPE = {
   pg: 'PG',
@@ -15,7 +15,7 @@ export const EXO_TYPE = {
 }
 
 /**
- * Mapping jenis SekulKit → Tipe ZenCBT
+ * Mapping jenis Atiga Asesmen → Tipe ZenCBT
  */
 export const ZEN_TYPE = {
   pg: 'pg',

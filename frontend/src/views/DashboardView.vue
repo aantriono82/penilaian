@@ -3,7 +3,7 @@
     <!-- Welcome -->
     <div class="mb-6">
       <h2 class="text-xl font-bold text-slate-900">Selamat datang, {{ auth.user?.name }}! 👋</h2>
-      <p class="text-slate-500 text-sm mt-1">{{ auth.user?.lembaga || 'SoalGen — AI Question Generator' }}</p>
+      <p class="text-slate-500 text-sm mt-1">{{ auth.user?.lembaga || 'Atiga Asesmen — AI Question Generator' }}</p>
     </div>
 
     <!-- Stats -->

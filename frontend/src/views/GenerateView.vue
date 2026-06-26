@@ -50,23 +50,36 @@
             </h3>
           </div>
           <div class="card-body space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="form-group">
-                <label class="label">Jenis Soal <span class="text-red-500">*</span></label>
-                <select v-model="form.jenis_soal" class="input">
-                  <option value="pg">Pilihan Ganda (PG)</option>
-                  <option value="pgk">PG Kompleks (PGK)</option>
-                  <option value="benar_salah">Benar / Salah</option>
-                  <option value="isian">Isian Singkat</option>
-                  <option value="essay">Essay / Uraian</option>
-                  <option value="menjodohkan">Menjodohkan</option>
-                </select>
+            <div class="form-group">
+              <div class="flex items-center justify-between gap-3 mb-2">
+                <label class="label mb-0">Campuran Jenis Soal <span class="text-red-500">*</span></label>
+                <span class="text-xs text-slate-500">Total {{ totalJumlah }} soal</span>
               </div>
-              <div class="form-group">
-                <label class="label">Jumlah Soal</label>
-                <input v-model.number="form.jumlah" type="number" min="1" max="30" class="input" />
-                <p class="text-xs text-slate-400 mt-1">Disarankan maks. 15 soal</p>
+              <div class="space-y-2">
+                <label
+                  v-for="item in form.jenis_soal_list"
+                  :key="item.jenis"
+                  class="flex items-center gap-3 rounded-xl border p-3 transition-all"
+                  :class="item.enabled ? 'border-primary-300 bg-primary-50/60' : 'border-slate-200'"
+                >
+                  <input v-model="item.enabled" type="checkbox" class="w-4 h-4 rounded text-primary-600 cursor-pointer" />
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-slate-800">{{ jenisSoalLabel[item.jenis] }}</p>
+                    <p class="text-xs text-slate-500">{{ jenisSoalHint[item.jenis] }}</p>
+                  </div>
+                  <div class="w-24">
+                    <input
+                      v-model.number="item.jumlah"
+                      type="number"
+                      min="1"
+                      max="30"
+                      class="input text-center"
+                      :disabled="!item.enabled"
+                    />
+                  </div>
+                </label>
               </div>
+              <p class="text-xs text-slate-400 mt-2">Pilih satu atau beberapa tipe. Jumlah per tipe akan digabung dalam satu proses generate.</p>
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div class="form-group">
@@ -77,7 +90,7 @@
                   <option value="sulit">🧠 Sulit (C5–C6)</option>
                 </select>
               </div>
-              <div v-if="['pg', 'pgk'].includes(form.jenis_soal)" class="form-group">
+              <div v-if="hasPilihanGandaType" class="form-group">
                 <label class="label">Jumlah Opsi Jawaban</label>
                 <select v-model.number="form.jumlah_opsi" class="input">
                   <option :value="3">3 Opsi (A–C)</option>
@@ -143,7 +156,7 @@
           :disabled="generating || !isFormValid">
           <Loader2 v-if="generating" class="w-5 h-5 animate-spin" />
           <Sparkles v-else class="w-5 h-5" />
-          {{ generating ? 'Sedang Generate...' : `Generate ${form.jumlah} Soal` }}
+          {{ generating ? 'Sedang Generate...' : `Generate ${totalJumlah} Soal` }}
         </button>
       </div>
 
@@ -274,16 +287,60 @@ const errorMessage = ref('')
 const showNewBank = ref(false)
 const savingBank = ref(false)
 
+const jenisSoalLabel = {
+  pg: 'Pilihan Ganda (PG)',
+  pgk: 'PG Kompleks (PGK)',
+  benar_salah: 'Benar / Salah',
+  isian: 'Isian Singkat',
+  essay: 'Essay / Uraian',
+  menjodohkan: 'Menjodohkan'
+}
+
+const jenisSoalHint = {
+  pg: 'Satu jawaban benar dengan distraktor.',
+  pgk: 'Bisa lebih dari satu jawaban benar.',
+  benar_salah: 'Pernyataan untuk dinilai benar atau salah.',
+  isian: 'Jawaban singkat dan spesifik.',
+  essay: 'Jawaban uraian dengan penjelasan.',
+  menjodohkan: 'Pasangan konsep atau istilah.'
+}
+
 const form = ref({
   bank_soal_id: '', bab: '', materi: '',
-  jenis_soal: 'pg', jumlah: 10,
+  jenis_soal_list: [
+    { jenis: 'pg', enabled: true, jumlah: 10 },
+    { jenis: 'pgk', enabled: false, jumlah: 2 },
+    { jenis: 'benar_salah', enabled: false, jumlah: 2 },
+    { jenis: 'isian', enabled: false, jumlah: 2 },
+    { jenis: 'essay', enabled: false, jumlah: 2 },
+    { jenis: 'menjodohkan', enabled: false, jumlah: 1 }
+  ],
   tingkat_kesulitan: 'sedang', jumlah_opsi: 4,
   generate_pembahasan: false, model_id: ''
 })
 const newBank = ref({ nama: '', mata_pelajaran: '', jenjang: '', kelas: '' })
 
+const selectedJenisList = computed(() =>
+  form.value.jenis_soal_list
+    .filter(item => item.enabled && Number(item.jumlah) > 0)
+    .map(item => ({ jenis: item.jenis, jumlah: Number(item.jumlah) }))
+)
+
+const totalJumlah = computed(() =>
+  selectedJenisList.value.reduce((total, item) => total + item.jumlah, 0)
+)
+
+const hasPilihanGandaType = computed(() =>
+  selectedJenisList.value.some(item => ['pg', 'pgk'].includes(item.jenis))
+)
+
 const isFormValid = computed(() =>
-  form.value.bank_soal_id && form.value.bab && form.value.materi && form.value.model_id
+  form.value.bank_soal_id &&
+  form.value.bab &&
+  form.value.materi &&
+  form.value.model_id &&
+  selectedJenisList.value.length > 0 &&
+  totalJumlah.value > 0
 )
 
 onMounted(async () => {
@@ -310,8 +367,22 @@ async function handleGenerate() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('token')}`
       },
-      body: JSON.stringify(form.value)
+      body: JSON.stringify({
+        ...form.value,
+        jumlah: totalJumlah.value,
+        jenis_soal: selectedJenisList.value.length === 1 ? selectedJenisList.value[0].jenis : null,
+        jenis_soal_list: selectedJenisList.value
+      })
     })
+
+    if (!response.ok) {
+      let message = 'Gagal memulai generate soal.'
+      try {
+        const data = await response.json()
+        message = data.message || message
+      } catch {}
+      throw new Error(message)
+    }
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -338,8 +409,8 @@ async function handleGenerate() {
         } catch {}
       }
     }
-  } catch {
-    errorMessage.value = 'Koneksi terputus. Periksa jaringan dan coba lagi.'
+  } catch (err) {
+    errorMessage.value = err.message || 'Koneksi terputus. Periksa jaringan dan coba lagi.'
   } finally {
     generating.value = false
   }

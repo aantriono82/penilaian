@@ -129,7 +129,7 @@
           </h3>
           <span class="badge badge-gray">{{ filteredSoal.length }} soal</span>
         </div>
-        <div class="flex-1 overflow-y-auto bg-white p-8 min-h-0" id="preview-area">
+        <div ref="previewArea" class="flex-1 overflow-y-auto bg-white p-8 min-h-0" id="preview-area">
             <!-- Banner info CBT -->
             <div v-if="format !== 'default'" class="mb-5 space-y-2">
               <div class="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
@@ -228,7 +228,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUpdated, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import {
@@ -238,6 +238,7 @@ import {
 import { saveAs } from 'file-saver'
 import api from '../utils/api.js'
 import { exportDocx, FULLY_SUPPORTED } from '../utils/exporters/index.js'
+import { renderMathInContainer } from '../utils/mathRenderer.js'
 
 const route = useRoute()
 const toast = useToast()
@@ -245,6 +246,7 @@ const bankId = route.params.bankId
 const bank = ref(null)
 const allSoal = ref([])
 const exporting = ref(null)
+const previewArea = ref(null)
 
 const layout = ref({
   title: 'SOAL UJIAN', institution: '', subject: '', grade: '',
@@ -315,6 +317,11 @@ function exportPDF() {
   window.print()
 }
 
+async function renderPreviewMath() {
+  await nextTick()
+  await renderMathInContainer(previewArea.value)
+}
+
 onMounted(async () => {
   const [bankRes, soalRes] = await Promise.all([
     api.get(`/bank-soal/${bankId}`),
@@ -326,6 +333,11 @@ onMounted(async () => {
   layout.value.grade = bank.value.kelas || ''
   layout.value.semester = bank.value.semester || ''
   layout.value.year = bank.value.tahun_ajaran || ''
+  await renderPreviewMath()
+})
+
+onUpdated(() => {
+  renderPreviewMath()
 })
 </script>
 

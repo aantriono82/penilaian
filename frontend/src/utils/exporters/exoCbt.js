@@ -88,7 +88,7 @@ async function buildSoalTable(soal, nomor) {
 
   // ── Baris 1-2: TS (kode tipe), KD ──
   rows.push(row('TS', kode, SH_YELLOW, SH_YELLOW))
-  rows.push(row('KD', '', SH_YELLOW, SH_YELLOW)) // SekulKit tidak punya KD
+  rows.push(row('KD', '', SH_YELLOW, SH_YELLOW)) // Atiga Asesmen tidak punya KD
 
   // ── Baris 3-4: KJ, ABS ──
   let kj = ''

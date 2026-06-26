@@ -1,4 +1,4 @@
-# SoalGen — AI Question Generator
+# Atiga Asesmen — AI Question Generator
 
 Aplikasi berbasis web untuk generate soal ujian menggunakan AI (OpenRouter), berbasis Vue 3 + Express + SQLite.
 
@@ -30,7 +30,7 @@ Aplikasi berbasis web untuk generate soal ujian menggunakan AI (OpenRouter), ber
 
 ```bash
 git clone <repo-url>
-cd soal-generator
+cd atiga-asesmen
 npm run install:all
 ```
 
@@ -44,11 +44,20 @@ cp .env.example .env
 
 Isi `.env`:
 ```
-PORT=3001
+PORT=3002
 JWT_SECRET=isi_dengan_string_acak_panjang_minimal_32_karakter
 JWT_EXPIRES_IN=7d
-DB_PATH=./data/soalgen.db
+DB_PATH=./data/atiga-asesmen.db
 NODE_ENV=development
+FRONTEND_URL=http://localhost:5173
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_HTTP_REFERER=http://localhost:5173
+OPENROUTER_X_TITLE=Atiga Asesmen
+```
+
+Opsional untuk frontend dev, jika backend Anda jalan di host/port lain:
+```env
+VITE_DEV_API_TARGET=http://localhost:3002
 ```
 
 ### 3. Jalankan Development
@@ -61,7 +70,7 @@ npm run dev
 Atau manual:
 ```bash
 # Terminal 1
-npm run dev:backend   # http://localhost:3001
+npm run dev:backend   # http://localhost:3002
 
 # Terminal 2
 npm run dev:frontend  # http://localhost:5173
@@ -98,7 +107,7 @@ npm run build
 ```bash
 npm install -g pm2
 cd backend
-pm2 start src/index.js --name soalgen-api
+pm2 start src/index.js --name atiga-asesmen-api
 ```
 
 ### Nginx Config (contoh)
@@ -110,13 +119,13 @@ server {
 
     # Frontend static
     location / {
-        root /path/to/soal-generator/frontend/dist;
+        root /path/to/atiga-asesmen/frontend/dist;
         try_files $uri $uri/ /index.html;
     }
 
     # Backend API proxy
     location /api {
-        proxy_pass http://localhost:3001;
+        proxy_pass http://localhost:3002;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -132,11 +141,14 @@ server {
 ### Environment Production
 
 ```env
-PORT=3001
+PORT=3002
 JWT_SECRET=GANTI_DENGAN_RANDOM_STRING_YANG_SANGAT_KUAT
 NODE_ENV=production
 FRONTEND_URL=https://domain-anda.com
-DB_PATH=/var/data/soalgen.db
+DB_PATH=/var/data/atiga-asesmen.db
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_HTTP_REFERER=https://domain-anda.com
+OPENROUTER_X_TITLE=Atiga Asesmen
 ```
 
 ---
@@ -144,7 +156,7 @@ DB_PATH=/var/data/soalgen.db
 ## 📁 Struktur Project
 
 ```
-soal-generator/
+atiga-asesmen/
 ├── backend/
 │   ├── src/
 │   │   ├── controllers/     # Logic handler

@@ -6,7 +6,7 @@
         <div class="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-2xl mb-4 shadow-lg shadow-primary-200">
           <FileText class="w-7 h-7 text-white" />
         </div>
-        <h1 class="text-2xl font-bold text-slate-900">SoalGen</h1>
+        <h1 class="text-2xl font-bold text-slate-900">Atiga Asesmen</h1>
         <p class="text-slate-500 mt-1">AI Question Generator untuk Pendidik</p>
       </div>
 

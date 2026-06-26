@@ -1,5 +1,5 @@
 <template>
-  <div class="p-6 max-w-6xl mx-auto">
+  <div ref="detailArea" class="p-6 max-w-6xl mx-auto">
     <!-- Header -->
     <div class="flex items-start justify-between mb-6 gap-4">
       <div class="flex items-center gap-3">
@@ -180,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUpdated, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import {
@@ -189,6 +189,7 @@ import {
   ImageIcon
 } from 'lucide-vue-next'
 import api from '../utils/api.js'
+import { renderMathInContainer } from '../utils/mathRenderer.js'
 
 const route = useRoute()
 const toast = useToast()
@@ -196,6 +197,7 @@ const bankId = route.params.id
 const bank = ref(null)
 const soalList = ref([])
 const loading = ref(false)
+const detailArea = ref(null)
 const selected = ref([])
 const filterJenis = ref('')
 const filterKesulitan = ref('')
@@ -259,7 +261,19 @@ async function bulkDelete() {
 
 function changePage(p) { page.value = p; fetchSoal() }
 
-onMounted(() => { fetchBank(); fetchSoal() })
+async function renderDetailMath() {
+  await nextTick()
+  await renderMathInContainer(detailArea.value)
+}
+
+onMounted(async () => {
+  await Promise.all([fetchBank(), fetchSoal()])
+  await renderDetailMath()
+})
+
+onUpdated(() => {
+  renderDetailMath()
+})
 </script>
 
 <style scoped>

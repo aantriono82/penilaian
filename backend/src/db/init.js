@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.DB_PATH || './data/soalgen.db';
+const DB_PATH = process.env.DB_PATH || './data/atiga-asesmen.db';
 
 mkdirSync(dirname(DB_PATH), { recursive: true });
 

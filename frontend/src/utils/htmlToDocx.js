@@ -1,4 +1,5 @@
 import { Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType } from 'docx'
+import { parseMixedLatexToDocxChildren } from './latexToDocxMath.js'
 
 /**
  * Fetch image URL → ArrayBuffer
@@ -39,7 +40,7 @@ function dataUriToBuffer(dataUri) {
 async function inlineToRuns(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent
-    return text ? [new TextRun({ text })] : []
+    return text ? parseMixedLatexToDocxChildren(text, value => new TextRun({ text: value })) : []
   }
 
   if (node.nodeType !== Node.ELEMENT_NODE) return []

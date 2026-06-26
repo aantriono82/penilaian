@@ -11,7 +11,7 @@
           <FileText class="w-4 h-4 text-white" />
         </div>
         <div>
-          <h1 class="text-sm font-bold text-slate-900">SoalGen</h1>
+          <h1 class="text-sm font-bold text-slate-900">Atiga Asesmen</h1>
           <p class="text-xs text-slate-500">AI Question Generator</p>
         </div>
       </div>
@@ -120,7 +120,7 @@ const pageTitle = computed(() => {
   if (route.path.startsWith('/bank-soal/') && route.path.includes('/edit')) return 'Edit Soal'
   if (route.path.startsWith('/bank-soal/') && route.path.startsWith('/export')) return 'Export Soal'
   if (route.path.startsWith('/bank-soal/')) return 'Detail Bank Soal'
-  return titleMap[route.path] || 'SoalGen'
+  return titleMap[route.path] || 'Atiga Asesmen'
 })
 
 function handleLogout() {

@@ -2,12 +2,31 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/init.js';
 import { shouldGenerateImage } from '../utils/imageGen.js';
 
+const VALID_JENIS = ['pg', 'pgk', 'essay', 'isian', 'benar_salah', 'menjodohkan'];
+
+function normalizeJenisSoalList(jenisSoal, jumlah, jenisSoalList = []) {
+  if (Array.isArray(jenisSoalList) && jenisSoalList.length > 0) {
+    return jenisSoalList
+      .map(item => ({
+        jenis: item?.jenis,
+        jumlah: Number(item?.jumlah || 0)
+      }))
+      .filter(item => VALID_JENIS.includes(item.jenis) && item.jumlah > 0);
+  }
+
+  if (VALID_JENIS.includes(jenisSoal)) {
+    return [{ jenis: jenisSoal, jumlah: Number(jumlah || 0) || 1 }];
+  }
+
+  return [];
+}
+
 // =====================
 // PROMPT BUILDER
 // =====================
 function buildPrompt(config) {
   const {
-    mata_pelajaran, bab, materi, jenis_soal, jumlah, tingkat_kesulitan,
+    mata_pelajaran, bab, materi, jenis_soal_list, jumlah, tingkat_kesulitan,
     jumlah_opsi, generate_pembahasan, kelas, jenjang, bahasa = 'Indonesia'
   } = config;
 
@@ -34,16 +53,24 @@ function buildPrompt(config) {
     `Materi/Subbab: ${materi}`,
   ].filter(Boolean).join('\n');
 
-  let formatPetunjuk = '';
-  if (jenis_soal === 'pg' || jenis_soal === 'pgk') {
-    formatPetunjuk = `Setiap soal harus memiliki ${jumlah_opsi || 4} opsi jawaban berlabel A, B, C${jumlah_opsi >= 4 ? ', D' : ''}${jumlah_opsi >= 5 ? ', E' : ''}.`;
-    if (jenis_soal === 'pgk') formatPetunjuk += ' PGK bisa memiliki 1-3 jawaban benar.';
-    else formatPetunjuk += ' Hanya 1 jawaban yang benar.';
-  } else if (jenis_soal === 'benar_salah') {
-    formatPetunjuk = 'Setiap soal adalah pernyataan, jawaban hanya "Benar" atau "Salah".';
-  } else if (jenis_soal === 'menjodohkan') {
-    formatPetunjuk = `Buat ${jumlah} pasang item (kolom A dan kolom B) yang harus dijodohkan.`;
-  }
+  const komposisi = jenis_soal_list
+    .map(item => `- ${jenisLabel[item.jenis] || item.jenis}: ${item.jumlah} soal`)
+    .join('\n');
+
+  const formatPetunjuk = [
+    jenis_soal_list.some(item => item.jenis === 'pg') &&
+      `- Untuk PG: setiap soal wajib memiliki ${jumlah_opsi || 4} opsi jawaban berlabel A, B, C${jumlah_opsi >= 4 ? ', D' : ''}${jumlah_opsi >= 5 ? ', E' : ''} dan tepat 1 jawaban benar.`,
+    jenis_soal_list.some(item => item.jenis === 'pgk') &&
+      `- Untuk PGK: setiap soal wajib memiliki ${jumlah_opsi || 4} opsi jawaban berlabel A, B, C${jumlah_opsi >= 4 ? ', D' : ''}${jumlah_opsi >= 5 ? ', E' : ''} dan boleh memiliki 1-3 jawaban benar.`,
+    jenis_soal_list.some(item => item.jenis === 'benar_salah') &&
+      '- Untuk Benar/Salah: setiap soal berupa pernyataan dan opsi wajib hanya "Benar" dan "Salah".',
+    jenis_soal_list.some(item => item.jenis === 'isian') &&
+      '- Untuk Isian: berikan kunci_jawaban singkat, spesifik, dan langsung.',
+    jenis_soal_list.some(item => item.jenis === 'essay') &&
+      '- Untuk Essay: berikan kunci_jawaban dalam bentuk poin jawaban inti atau rubrik ringkas.',
+    jenis_soal_list.some(item => item.jenis === 'menjodohkan') &&
+      '- Untuk Menjodohkan: tulis pasangan item langsung di pertanyaan dengan format kolom/pasangan yang jelas, lalu isi kunci_jawaban dengan pasangan yang benar.'
+  ].filter(Boolean).join('\n');
 
   return `Kamu adalah guru berpengalaman yang ahli membuat soal berkualitas tinggi.
 
@@ -51,7 +78,10 @@ KONTEKS SOAL:
 ${konteks}
 
 TUGAS:
-Buat ${jumlah} soal jenis ${jenisLabel[jenis_soal] || jenis_soal} dengan ${difficultyDesc[tingkat_kesulitan] || 'tingkat sedang'}.
+Buat total ${jumlah} soal dengan komposisi jenis berikut:
+${komposisi}
+
+Semua soal harus menggunakan ${difficultyDesc[tingkat_kesulitan] || 'tingkat sedang'}.
 ${formatPetunjuk}
 ${generate_pembahasan ? 'Sertakan pembahasan singkat dan jelas untuk setiap soal.' : 'Jangan sertakan pembahasan.'}
 
@@ -59,8 +89,10 @@ ATURAN PENTING:
 - Soal harus kontekstual, relevan, dan tidak ambigu
 - Bahasa yang digunakan: Bahasa ${bahasa}
 - Hindari soal yang trivial atau terlalu mudah ditebak
+- Pastikan jumlah soal per jenis persis mengikuti komposisi yang diminta
 - Untuk PG/PGK: pastikan semua pengecoh (distraktor) masuk akal
 - Variasikan bentuk pertanyaan agar tidak monoton
+- Field "jenis" pada setiap item wajib salah satu dari: ${VALID_JENIS.join(', ')}
 
 
 FORMAT OUTPUT (wajib JSON murni, tidak ada teks di luar JSON):
@@ -68,11 +100,10 @@ FORMAT OUTPUT (wajib JSON murni, tidak ada teks di luar JSON):
   "soal": [
     {
       "pertanyaan": "teks pertanyaan",
-      "jenis": "${jenis_soal}",
+      "jenis": "pg | pgk | benar_salah | isian | essay | menjodohkan",
       "tingkat_kesulitan": "${tingkat_kesulitan}",
-      ${jenis_soal === 'pg' || jenis_soal === 'pgk' ? `"opsi": [{"label": "A", "teks": "...", "is_benar": false}],` : ''}
-      ${jenis_soal === 'benar_salah' ? `"opsi": [{"label": "Benar", "teks": "Benar", "is_benar": true}, {"label": "Salah", "teks": "Salah", "is_benar": false}],` : ''}
-      ${jenis_soal === 'isian' || jenis_soal === 'essay' ? `"kunci_jawaban": "jawaban yang benar",` : ''}
+      "opsi": [{"label": "A", "teks": "...", "is_benar": false}] atau [] jika tidak relevan,
+      "kunci_jawaban": "isi untuk isian/essay/menjodohkan, null jika tidak relevan",
       ${generate_pembahasan ? `"pembahasan": "penjelasan jawaban",` : `"pembahasan": null,`}
       "need_image": true atau false,
       "image_prompt": "deskripsi gambar dalam bahasa Inggris jika need_image true, kosong jika false"
@@ -87,14 +118,17 @@ FORMAT OUTPUT (wajib JSON murni, tidak ada teks di luar JSON):
 export const generateController = {
   async generate(req, res) {
     const {
-      bank_soal_id, bab, materi, jenis_soal, jumlah = 5,
+      bank_soal_id, bab, materi, jenis_soal, jenis_soal_list, jumlah = 5,
       tingkat_kesulitan = 'sedang', jumlah_opsi = 4,
       generate_pembahasan = false, model_id, mata_pelajaran,
       kelas, jenjang
     } = req.body;
 
-    if (!bank_soal_id || !bab || !materi || !jenis_soal || !model_id) {
-      return res.status(400).json({ message: 'Field bank_soal_id, bab, materi, jenis_soal, model_id wajib diisi' });
+    const normalizedJenisList = normalizeJenisSoalList(jenis_soal, jumlah, jenis_soal_list);
+    const totalJumlah = normalizedJenisList.reduce((sum, item) => sum + item.jumlah, 0);
+
+    if (!bank_soal_id || !bab || !materi || normalizedJenisList.length === 0 || !model_id) {
+      return res.status(400).json({ message: 'Field bank_soal_id, bab, materi, jenis soal, model_id wajib diisi' });
     }
 
     const bank = db.prepare('SELECT * FROM bank_soal WHERE id = ? AND user_id = ?').get(bank_soal_id, req.user.id);
@@ -110,13 +144,13 @@ export const generateController = {
     db.prepare(`
       INSERT INTO generate_history (id, user_id, bank_soal_id, model_id, model_name, total_soal_diminta, status, config_snapshot)
       VALUES (?, ?, ?, ?, ?, ?, 'processing', ?)
-    `).run(historyId, req.user.id, bank_soal_id, model_id, modelConfig.name, jumlah,
-      JSON.stringify({ bab, materi, jenis_soal, jumlah, tingkat_kesulitan }));
+    `).run(historyId, req.user.id, bank_soal_id, model_id, modelConfig.name, totalJumlah,
+      JSON.stringify({ bab, materi, jenis_soal, jenis_soal_list: normalizedJenisList, jumlah: totalJumlah, tingkat_kesulitan }));
 
     const resolvedMapel = mata_pelajaran || bank.mata_pelajaran;
     const prompt = buildPrompt({
       mata_pelajaran: resolvedMapel,
-      bab, materi, jenis_soal, jumlah, tingkat_kesulitan, jumlah_opsi,
+      bab, materi, jenis_soal_list: normalizedJenisList, jumlah: totalJumlah, tingkat_kesulitan, jumlah_opsi,
       generate_pembahasan, kelas: kelas || bank.kelas, jenjang: jenjang || bank.jenjang
     });
 
@@ -135,13 +169,17 @@ export const generateController = {
     try {
       sendEvent('status', { message: 'Menghubungi AI...' });
 
-      const aiResponse = await fetch(`${process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'}/chat/completions`, {
+      const openRouterBaseUrl = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
+      const openRouterReferer = process.env.OPENROUTER_HTTP_REFERER || process.env.FRONTEND_URL || 'http://localhost:5173';
+      const openRouterTitle = process.env.OPENROUTER_X_TITLE || 'Atiga Asesmen';
+
+      const aiResponse = await fetch(`${openRouterBaseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKeyConfig.value}`,
-          'HTTP-Referer': 'https://sekulkit.app',
-          'X-Title': 'SekulKit'
+          'HTTP-Referer': openRouterReferer,
+          'X-Title': openRouterTitle
         },
         body: JSON.stringify({
           model: modelConfig.model_id,
@@ -198,6 +236,23 @@ export const generateController = {
         throw new Error('Format respons AI tidak valid');
       }
 
+      if (parsedSoal.soal.length !== totalJumlah) {
+        throw new Error('Jumlah soal hasil AI tidak sesuai permintaan. Coba generate ulang.');
+      }
+
+      const actualJenisCount = parsedSoal.soal.reduce((acc, item) => {
+        if (VALID_JENIS.includes(item?.jenis)) {
+          acc[item.jenis] = (acc[item.jenis] || 0) + 1;
+        }
+        return acc;
+      }, {});
+
+      for (const item of normalizedJenisList) {
+        if ((actualJenisCount[item.jenis] || 0) !== item.jumlah) {
+          throw new Error(`Komposisi soal ${item.jenis} tidak sesuai permintaan. Coba generate ulang.`);
+        }
+      }
+
       // Gambar tidak di‑generate lagi – hanya menyimpan deskripsi untuk referensi user.
 
       // Simpan soal + generate gambar secara paralel
@@ -217,12 +272,18 @@ export const generateController = {
       // Simpan semua soal dulu ke DB
       db.transaction(() => {
         parsedSoal.soal.forEach((s, idx) => {
+          if (!VALID_JENIS.includes(s.jenis)) {
+            throw new Error(`Jenis soal tidak valid pada hasil AI: ${s.jenis}`);
+          }
+
           const soalId = uuidv4();
           const needImg = shouldGenerateImage(s);
+          const soalJenis = s.jenis;
+          const soalKesulitan = s.tingkat_kesulitan || tingkat_kesulitan;
 
           insertSoal.run(
-            soalId, bank_soal_id, req.user.id, bab, materi, jenis_soal,
-            s.pertanyaan, tingkat_kesulitan, s.pembahasan || null,
+            soalId, bank_soal_id, req.user.id, bab, materi, soalJenis,
+            s.pertanyaan, soalKesulitan, s.pembahasan || null,
             '[]', maxNomor + idx + 1,
             null, // image_url — diisi nanti
             needImg ? s.image_prompt : null
@@ -244,7 +305,7 @@ export const generateController = {
           savedSoals.push({
             id: soalId,
             pertanyaan: s.pertanyaan,
-            jenis: jenis_soal,
+            jenis: soalJenis,
             opsi,
             need_image: needImg,
             image_prompt: needImg ? s.image_prompt : null,

@@ -57,6 +57,6 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
-  console.log(`📚 Soal Generator API v1.0.0`);
+  console.log(`📚 Atiga Asesmen API v1.0.0`);
   console.log(`🌍 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
