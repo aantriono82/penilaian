@@ -80,6 +80,9 @@
                 </label>
               </div>
               <p class="text-xs text-slate-400 mt-2">Pilih satu atau beberapa tipe. Jumlah per tipe akan digabung dalam satu proses generate.</p>
+              <p v-if="stimulus.mode !== 'none'" class="mt-2 text-xs text-primary-600">
+                Soal-soal yang dicentang akan menggunakan stimulus yang sama di atas.
+              </p>
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div class="form-group">
@@ -112,6 +115,8 @@
             </label>
           </div>
         </div>
+
+        <StimulusPanel v-model:stimulus="stimulus" :bank-soal-id="form.bank_soal_id" :model-id="form.model_id" />
 
         <!-- Pilih Model AI -->
         <div class="card">
@@ -196,6 +201,71 @@
               <p class="text-xs text-slate-500 flex items-center gap-1">
                 <Clock class="w-3.5 h-3.5" /> Selesai dalam {{ (result.duration_ms / 1000).toFixed(1) }}s
               </p>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p class="text-[11px] uppercase tracking-wide text-slate-400">Total</p>
+                  <p class="text-sm font-semibold text-slate-800">{{ result.soal?.length || 0 }} soal</p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p class="text-[11px] uppercase tracking-wide text-slate-400">Dengan stimulus</p>
+                  <p class="text-sm font-semibold text-slate-800">{{ generatedStimulusCount }} soal</p>
+                </div>
+              </div>
+              <div v-if="result.stimulus_warnings?.length" class="grid grid-cols-2 gap-2">
+                <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p class="text-[11px] uppercase tracking-wide text-amber-600">Soal Dengan Warning</p>
+                  <p class="text-sm font-semibold text-amber-800">{{ stimulusWarningCount }} soal</p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p class="text-[11px] uppercase tracking-wide text-slate-400">Stimulus SVG</p>
+                  <p class="text-sm font-semibold text-slate-800">{{ generatedSvgStimulusCount }} soal</p>
+                </div>
+              </div>
+              <div v-if="result.stimulus_warnings?.length" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p class="text-xs font-medium text-amber-800">Catatan stimulus visual</p>
+                <ul class="mt-1 space-y-1 text-xs text-amber-700">
+                  <li v-for="warning in result.stimulus_warnings.slice(0, 3)" :key="`${warning.index}-${warning.normalized_type}`">
+                    Soal {{ warning.index }}: {{ warning.messages[0] }}
+                  </li>
+                </ul>
+              </div>
+              <div v-if="resultPreviewList.length" class="space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs font-medium text-slate-600">Preview hasil</p>
+                  <p class="text-[11px] text-slate-400">Menampilkan {{ resultPreviewList.length }} soal pertama</p>
+                </div>
+                <div class="space-y-2">
+                  <div
+                    v-for="(soal, idx) in resultPreviewList"
+                    :key="soal.id || idx"
+                    class="rounded-xl border border-slate-200 p-3"
+                  >
+                    <div class="mb-2 flex items-center gap-2 flex-wrap">
+                      <span class="text-xs font-semibold text-slate-400">{{ idx + 1 }}.</span>
+                      <span class="badge badge-gray">{{ jenisSoalLabel[soal.jenis] || soal.jenis }}</span>
+                      <span v-if="soal.stimulus_content" class="badge badge-primary">
+                        Stimulus {{ stimulusPreviewLabel[soal.stimulus_type] || 'Konten' }}
+                      </span>
+                      <span v-if="getStimulusWarningForIndex(idx)" class="badge bg-amber-100 text-amber-700">
+                        Warning Stimulus
+                      </span>
+                    </div>
+                    <div v-if="soal.stimulus_content" class="mb-2 rounded-lg bg-slate-50 px-2.5 py-2">
+                      <p class="text-[11px] font-medium uppercase tracking-wide text-slate-400 mb-1">Stimulus</p>
+                      <div v-if="hasVisualMarkup(soal.stimulus_content)" class="space-y-2">
+                        <div class="rounded-md border border-slate-200 bg-white p-2">
+                          <MathHtml :html="soal.stimulus_content" content-class="soal-content text-slate-700 text-xs" />
+                        </div>
+                      </div>
+                      <p v-else class="text-xs leading-relaxed text-slate-600">{{ summarizeHtml(soal.stimulus_content, 160) }}</p>
+                      <p v-if="getStimulusWarningForIndex(idx)" class="mt-2 text-[11px] text-amber-700">
+                        {{ getStimulusWarningForIndex(idx).messages[0] }}
+                      </p>
+                    </div>
+                    <p class="text-xs leading-relaxed text-slate-700">{{ summarizeHtml(soal.pertanyaan, 180) }}</p>
+                  </div>
+                </div>
+              </div>
               <RouterLink :to="`/bank-soal/${form.bank_soal_id}`" class="btn-primary w-full justify-center">
                 Lihat Soal <ArrowRight class="w-4 h-4" />
               </RouterLink>
@@ -264,7 +334,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useToast } from 'vue-toastification'
 import {
   Library, Plus, SlidersHorizontal, BookOpenCheck, BrainCircuit,
@@ -273,6 +343,8 @@ import {
 } from 'lucide-vue-next'
 import { useBankSoalStore } from '../stores/bankSoal.js'
 import api from '../utils/api.js'
+import MathHtml from '../components/MathHtml.vue'
+import StimulusPanel from '../components/StimulusPanel.vue'
 
 const toast = useToast()
 const bankStore = useBankSoalStore()
@@ -286,6 +358,7 @@ const result = ref(null)
 const errorMessage = ref('')
 const showNewBank = ref(false)
 const savingBank = ref(false)
+const stimulus = ref({ id: null, konten: '', mode: 'none' })
 
 const jenisSoalLabel = {
   pg: 'Pilihan Ganda (PG)',
@@ -303,6 +376,14 @@ const jenisSoalHint = {
   isian: 'Jawaban singkat dan spesifik.',
   essay: 'Jawaban uraian dengan penjelasan.',
   menjodohkan: 'Pasangan konsep atau istilah.'
+}
+
+const stimulusPreviewLabel = {
+  text: 'Teks',
+  image: 'Gambar',
+  table: 'Tabel',
+  diagram: 'Diagram',
+  graph: 'Grafik'
 }
 
 const form = ref({
@@ -340,8 +421,44 @@ const isFormValid = computed(() =>
   form.value.materi &&
   form.value.model_id &&
   selectedJenisList.value.length > 0 &&
-  totalJumlah.value > 0
+  totalJumlah.value > 0 &&
+  (stimulus.value.mode === 'none' || Boolean(stimulus.value.id))
 )
+const generatedStimulusCount = computed(() =>
+  (result.value?.soal || []).filter(soal => hasStimulusContent(soal.stimulus_content || '')).length
+)
+const stimulusWarningCount = computed(() => (result.value?.stimulus_warnings || []).length)
+const generatedSvgStimulusCount = computed(() =>
+  (result.value?.soal || []).filter(soal => /<svg\b|data:image\/svg\+xml|src=["'][^"']+\.svg(?:\?[^"']*)?["']/i.test(soal.stimulus_content || '')).length
+)
+const resultPreviewList = computed(() => (result.value?.soal || []).slice(0, 3))
+
+function stripHtml(html = '') {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function summarizeHtml(html = '', maxLength = 160) {
+  if (hasVisualMarkup(html) && !stripHtml(html)) return '[Stimulus visual]'
+  const text = stripHtml(html)
+  if (text.length <= maxLength) return text || '-'
+  return `${text.slice(0, maxLength).trim()}...`
+}
+
+function hasVisualMarkup(html = '') {
+  return /<(img|svg|figure|canvas)\b/i.test(html)
+}
+
+function hasStimulusContent(html = '') {
+  return Boolean(stripHtml(html) || hasVisualMarkup(html))
+}
+
+function getStimulusWarningForIndex(index) {
+  return (result.value?.stimulus_warnings || []).find(warning => warning.index === index + 1) || null
+}
 
 onMounted(async () => {
   await bankStore.fetchAll()
@@ -371,7 +488,8 @@ async function handleGenerate() {
         ...form.value,
         jumlah: totalJumlah.value,
         jenis_soal: selectedJenisList.value.length === 1 ? selectedJenisList.value[0].jenis : null,
-        jenis_soal_list: selectedJenisList.value
+        jenis_soal_list: selectedJenisList.value,
+        stimulusId: stimulus.value?.id || null
       })
     })
 
@@ -432,3 +550,21 @@ async function createNewBank() {
   finally { savingBank.value = false }
 }
 </script>
+
+<style scoped>
+.soal-content :deep(img),
+.soal-content :deep(svg) {
+  @apply max-w-full h-auto rounded-md border border-slate-200;
+  max-height: 180px;
+}
+.soal-content :deep(table) {
+  @apply w-full border-collapse text-xs;
+}
+.soal-content :deep(th),
+.soal-content :deep(td) {
+  @apply border border-slate-300 px-2 py-1 align-top;
+}
+.soal-content :deep(th) {
+  @apply bg-slate-100 font-semibold;
+}
+</style>

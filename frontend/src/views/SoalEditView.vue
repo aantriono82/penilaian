@@ -5,14 +5,16 @@
         <ArrowLeft class="w-5 h-5" />
       </button>
       <div>
-        <h2 class="text-xl font-bold text-slate-900">Edit Soal</h2>
-        <p class="text-slate-500 text-sm">Ubah konten soal, opsi jawaban, dan pembahasan</p>
+        <h2 class="text-xl font-bold text-slate-900">{{ isCreateMode ? 'Tambah Soal' : 'Edit Soal' }}</h2>
+        <p class="text-slate-500 text-sm">
+          {{ isCreateMode ? 'Buat soal baru beserta stimulus, opsi jawaban, dan pembahasan' : 'Ubah konten soal, opsi jawaban, dan pembahasan' }}
+        </p>
       </div>
     </div>
 
     <div v-if="loading" class="card p-8 text-center">
       <Loader2 class="w-8 h-8 animate-spin text-primary-500 mx-auto mb-2" />
-      <p class="text-slate-400 text-sm">Memuat soal...</p>
+      <p class="text-slate-400 text-sm">{{ isCreateMode ? 'Menyiapkan editor...' : 'Memuat soal...' }}</p>
     </div>
 
     <form v-else @submit.prevent="handleSave" class="space-y-5">
@@ -58,15 +60,93 @@
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-header">
+          <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2">
+            <Info class="w-4 h-4 text-primary-500" /> Stimulus Soal
+          </h3>
+          <select v-model="form.stimulus_type" class="input !w-44 text-sm">
+            <option value="none">Tanpa stimulus</option>
+            <option value="text">Teks / Wacana</option>
+            <option value="image">Gambar</option>
+            <option value="table">Tabel</option>
+            <option value="diagram">Diagram</option>
+            <option value="graph">Grafik</option>
+          </select>
+        </div>
+        <div v-if="form.stimulus_type !== 'none'" class="card-body space-y-2">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="space-y-1">
+              <p class="text-xs text-slate-500">
+                Ini adalah konten stimulus final untuk soal ini dan akan tampil sebelum pertanyaan.
+              </p>
+              <p v-if="supportsLocalStimulusUpload" class="text-xs text-slate-500">
+                Berbeda dari halaman generate, bagian ini mengubah isi stimulus langsung pada soal yang sedang diedit.
+              </p>
+            </div>
+            <div v-if="supportsLocalStimulusUpload" class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="showSvgStimulusAction"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="openStimulusSvgPicker"
+              >
+                <Upload class="w-3.5 h-3.5" /> Upload SVG
+              </button>
+              <button
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="openStimulusFilePicker"
+              >
+                <Upload class="w-3.5 h-3.5" /> {{ stimulusLocalButtonLabel }}
+              </button>
+            </div>
+          </div>
+          <div
+            v-if="supportsLocalStimulusUpload"
+            class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+          >
+            <span class="font-medium text-slate-700">Format didukung:</span>
+            {{ stimulusUploadHelp }}
+          </div>
+          <div
+            v-if="showSvgStimulusHint"
+            class="rounded-lg border px-3 py-2 text-xs"
+            :class="stimulusUsesSvg
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'border-amber-200 bg-amber-50 text-amber-700'"
+          >
+            <span class="font-medium">
+              {{ stimulusUsesSvg ? 'SVG terdeteksi.' : 'SVG belum terdeteksi.' }}
+            </span>
+            {{ stimulusUsesSvg
+              ? ' Stimulus ini lebih cocok untuk diagram/grafik dan akan lebih tajam saat ditampilkan atau diexport.'
+              : ' Untuk diagram/grafik, SVG lebih disarankan daripada PNG/JPG agar hasil tetap tajam saat preview dan export.' }}
+          </div>
+          <RichTextEditor
+            ref="stimulusEditor"
+            v-model="form.stimulus_content"
+            :placeholder="stimulusPlaceholder[form.stimulus_type] || stimulusPlaceholder.text"
+            :upload-accept="stimulusUploadAccept"
+            :upload-precheck="stimulusUploadPrecheck" />
+        </div>
+      </div>
+
       <!-- Pertanyaan -->
       <div class="card">
         <div class="card-header">
           <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2">
             <HelpCircle class="w-4 h-4 text-primary-500" /> Teks Pertanyaan
           </h3>
+          <button type="button" class="btn-secondary btn-sm" @click="openPertanyaanFilePicker">
+            <Upload class="w-3.5 h-3.5" /> Gambar Lokal
+          </button>
         </div>
         <div class="card-body">
-          <RichTextEditor v-model="form.pertanyaan" placeholder="Tulis pertanyaan di sini..." />
+          <RichTextEditor
+            ref="pertanyaanEditor"
+            v-model="form.pertanyaan"
+            placeholder="Tulis pertanyaan di sini..." />
         </div>
       </div>
 
@@ -111,6 +191,13 @@
                 <input v-else type="checkbox" v-model="opsi.is_benar" class="rounded text-emerald-500 cursor-pointer" />
                 <span :class="opsi.is_benar ? 'text-emerald-700 font-semibold' : 'text-slate-400'">Benar</span>
               </label>
+              <button
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="openOpsiFilePicker(i)"
+              >
+                <Upload class="w-3.5 h-3.5" /> Gambar Lokal
+              </button>
               <button v-if="form.jenis !== 'benar_salah' && form.opsi.length > 2"
                 type="button" @click="removeOpsi(i)"
                 class="ml-auto text-slate-300 hover:text-red-500 transition-colors p-1">
@@ -118,7 +205,9 @@
               </button>
             </div>
             <div class="px-3 pb-3 pt-0">
-              <RichTextEditor :model-value="opsi.teks"
+              <RichTextEditor
+                :ref="el => setOpsiEditorRef(i, el)"
+                :model-value="opsi.teks"
                 @update:model-value="opsi.teks = $event"
                 :placeholder="`Tulis teks opsi ${opsi.label}...`" />
             </div>
@@ -144,10 +233,18 @@
           <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2">
             <Lightbulb class="w-4 h-4 text-amber-500" /> Pembahasan
           </h3>
-          <span class="text-xs text-slate-400">Opsional</span>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">Opsional</span>
+            <button type="button" class="btn-secondary btn-sm" @click="openPembahasanFilePicker">
+              <Upload class="w-3.5 h-3.5" /> Gambar Lokal
+            </button>
+          </div>
         </div>
         <div class="card-body">
-          <RichTextEditor v-model="form.pembahasan" placeholder="Tulis penjelasan jawaban..." />
+          <RichTextEditor
+            ref="pembahasanEditor"
+            v-model="form.pembahasan"
+            placeholder="Tulis penjelasan jawaban..." />
         </div>
       </div>
 
@@ -157,7 +254,7 @@
         <button type="submit" class="btn-primary flex-1 justify-center" :disabled="saving">
           <Loader2 v-if="saving" class="w-4 h-4 animate-spin" />
           <Save v-else class="w-4 h-4" />
-          {{ saving ? 'Menyimpan...' : 'Simpan Perubahan' }}
+          {{ saving ? 'Menyimpan...' : isCreateMode ? 'Simpan Soal' : 'Simpan Perubahan' }}
         </button>
       </div>
     </form>
@@ -165,12 +262,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import {
   ArrowLeft, Info, HelpCircle, ListChecks, Plus, X,
-  Key, Lightbulb, BadgeCheck, Loader2, Save
+  Key, Lightbulb, BadgeCheck, Loader2, Save, Upload
 } from 'lucide-vue-next'
 import api from '../utils/api.js'
 import RichTextEditor from '../components/RichTextEditor.vue'
@@ -179,13 +276,20 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const soalId = route.params.id
+const bankId = route.params.bankId || route.query.bank || ''
+const isCreateMode = !soalId
 const loading = ref(true)
 const saving = ref(false)
 const kunciJawaban = ref('')
+const stimulusEditor = ref(null)
+const pertanyaanEditor = ref(null)
+const pembahasanEditor = ref(null)
+const opsiEditors = ref([])
 const LABELS = ['A', 'B', 'C', 'D', 'E', 'F']
 
 const form = ref({
   bab: '', materi: '', jenis: 'pg', pertanyaan: '',
+  stimulus_type: 'none', stimulus_content: '',
   tingkat_kesulitan: 'sedang', skor: 10, pembahasan: '',
   is_verified: false, image_url: null, image_prompt: '',
   opsi: [
@@ -196,6 +300,54 @@ const form = ref({
   ]
 })
 
+const stimulusPlaceholder = {
+  text: 'Tulis wacana atau konteks stimulus di sini...',
+  image: 'Sisipkan gambar stimulus melalui URL, upload file, atau paste gambar...',
+  table: 'Buat tabel stimulus di sini...',
+  diagram: 'Sisipkan diagram stimulus di sini...',
+  graph: 'Sisipkan grafik stimulus di sini...'
+}
+
+const VISUAL_STIMULUS_UPLOAD = {
+  image: {
+    accept: '.png,.jpg,.jpeg,.gif,.webp,.svg',
+    help: 'PNG, JPG, GIF, WebP, atau SVG. File akan diunggah lalu disisipkan ke stimulus.'
+  },
+  diagram: {
+    accept: '.svg,.png,.jpg,.jpeg,.webp',
+    help: 'SVG direkomendasikan untuk diagram. PNG, JPG, dan WebP juga bisa dipakai bila diagram berupa gambar.'
+  },
+  graph: {
+    accept: '.svg,.png,.jpg,.jpeg,.webp',
+    help: 'SVG direkomendasikan untuk grafik agar tetap tajam. PNG, JPG, dan WebP juga didukung.'
+  }
+}
+
+const supportsLocalStimulusUpload = computed(() => Boolean(VISUAL_STIMULUS_UPLOAD[form.value.stimulus_type]))
+const stimulusUploadAccept = computed(() => VISUAL_STIMULUS_UPLOAD[form.value.stimulus_type]?.accept || 'image/*')
+const stimulusUploadHelp = computed(() => VISUAL_STIMULUS_UPLOAD[form.value.stimulus_type]?.help || '')
+const showSvgStimulusAction = computed(() => ['diagram', 'graph'].includes(form.value.stimulus_type))
+const showSvgStimulusHint = computed(() => ['diagram', 'graph'].includes(form.value.stimulus_type))
+const stimulusLocalButtonLabel = computed(() => {
+  if (form.value.stimulus_type === 'image') return 'Ambil Gambar'
+  if (form.value.stimulus_type === 'diagram') return 'Upload Gambar Diagram'
+  if (form.value.stimulus_type === 'graph') return 'Upload Gambar Grafik'
+  return 'Ambil dari Komputer'
+})
+const stimulusUsesSvg = computed(() => /<(svg)\b|src=["'][^"']+\.svg(?:\?[^"']*)?["']|data:image\/svg\+xml/i.test(form.value.stimulus_content || ''))
+const stimulusUploadPrecheck = (file) => {
+  const type = form.value.stimulus_type
+  const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name || '')
+  const isDiagramLike = ['diagram', 'graph'].includes(type)
+  const rasterLimitBytes = 1.5 * 1024 * 1024
+
+  if (isDiagramLike && !isSvg && file.size > rasterLimitBytes) {
+    return `File raster untuk ${type === 'diagram' ? 'diagram' : 'grafik'} dibatasi maksimal 1.5MB. Gunakan SVG agar hasil lebih tajam.`
+  }
+
+  return null
+}
+
 watch(() => form.value.jenis, (val) => {
   if (val === 'benar_salah') {
     form.value.opsi = [
@@ -205,6 +357,36 @@ watch(() => form.value.jenis, (val) => {
   }
 })
 
+watch(() => form.value.stimulus_type, (val) => {
+  if (val === 'none') {
+    form.value.stimulus_content = ''
+  }
+})
+
+function openStimulusFilePicker() {
+  stimulusEditor.value?.openFilePicker?.()
+}
+
+function openStimulusSvgPicker() {
+  stimulusEditor.value?.openFilePicker?.('.svg')
+}
+
+function openPertanyaanFilePicker() {
+  pertanyaanEditor.value?.openFilePicker?.()
+}
+
+function openPembahasanFilePicker() {
+  pembahasanEditor.value?.openFilePicker?.()
+}
+
+function setOpsiEditorRef(index, editorRef) {
+  opsiEditors.value[index] = editorRef || null
+}
+
+function openOpsiFilePicker(index) {
+  opsiEditors.value[index]?.openFilePicker?.()
+}
+
 function setBenar(idx) { form.value.opsi.forEach((o, i) => { o.is_benar = i === idx }) }
 function addOpsi() {
   if (form.value.opsi.length >= 6) return
@@ -212,6 +394,7 @@ function addOpsi() {
 }
 function removeOpsi(idx) {
   form.value.opsi.splice(idx, 1)
+  opsiEditors.value.splice(idx, 1)
   form.value.opsi.forEach((o, i) => { o.label = LABELS[i] })
 }
 
@@ -222,6 +405,15 @@ async function handleSave() {
     if (['isian', 'essay'].includes(form.value.jenis)) {
       opsiToSave = kunciJawaban.value ? [{ label: 'Kunci', teks: kunciJawaban.value, is_benar: true }] : []
     }
+
+    if (isCreateMode) {
+      if (!bankId) throw new Error('Bank soal tujuan tidak ditemukan')
+      await api.post('/soal', { ...form.value, bank_soal_id: bankId, opsi: opsiToSave })
+      toast.success('Soal berhasil dibuat!')
+      router.push(`/bank-soal/${bankId}`)
+      return
+    }
+
     await api.put(`/soal/${soalId}`, { ...form.value, opsi: opsiToSave })
     toast.success('Soal berhasil disimpan!')
     router.back()
@@ -231,11 +423,18 @@ async function handleSave() {
 }
 
 onMounted(async () => {
+  if (isCreateMode) {
+    loading.value = false
+    return
+  }
+
   try {
     const { data } = await api.get(`/soal/${soalId}`)
     const s = data.data
     form.value = {
       bab: s.bab, materi: s.materi, jenis: s.jenis, pertanyaan: s.pertanyaan,
+      stimulus_type: s.stimulus_type || 'none',
+      stimulus_content: s.stimulus_content || '',
       tingkat_kesulitan: s.tingkat_kesulitan, skor: s.skor,
       pembahasan: s.pembahasan || '', is_verified: s.is_verified === 1,
       image_url: s.image_url || null, image_prompt: s.image_prompt || '',

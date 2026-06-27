@@ -1,14 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/init.js';
-import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STORAGE_DIR = path.join(__dirname, '../../data/storage');
-
-// Pastikan folder storage ada
-fs.mkdirSync(STORAGE_DIR, { recursive: true });
+import { deleteStoredFile, storeUploadedFile } from '../utils/storage.js';
 
 const ALLOWED_TYPES = {
   'image/jpeg': '.jpg',
@@ -46,23 +39,18 @@ export const uploadController = {
         });
       }
 
-      // Generate unique filename
-      const ext = ALLOWED_TYPES[file.mimetype];
-      const filename = `${uuidv4()}${ext}`;
-      const filepath = path.join(STORAGE_DIR, filename);
-
-      // Move file to storage
-      fs.renameSync(file.path, filepath);
-
-      // Generate URL
-      const url = `/api/uploads/${filename}`;
+      const { filename, url, storageProvider, storageKey } = await storeUploadedFile({
+        tempPath: file.path,
+        mimeType: file.mimetype,
+        originalName: file.originalname
+      });
 
       // Log to database
       const id = uuidv4();
       db.prepare(`
-        INSERT INTO uploaded_files (id, user_id, filename, original_name, mime_type, size, url)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, req.user.id, filename, file.originalname, file.mimetype, file.size, url);
+        INSERT INTO uploaded_files (id, user_id, filename, original_name, mime_type, size, storage_provider, storage_key, url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, req.user.id, filename, file.originalname, file.mimetype, file.size, storageProvider, storageKey, url);
 
       res.json({
         data: {
@@ -84,26 +72,24 @@ export const uploadController = {
     }
   },
 
-  deleteImage(req, res) {
-    const { id } = req.params;
+  async deleteImage(req, res) {
+    try {
+      const { id } = req.params;
 
-    const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ? AND user_id = ?')
-      .get(id, req.user.id);
+      const file = db.prepare('SELECT * FROM uploaded_files WHERE id = ? AND user_id = ?')
+        .get(id, req.user.id);
 
-    if (!file) {
-      return res.status(404).json({ message: 'File tidak ditemukan' });
+      if (!file) {
+        return res.status(404).json({ message: 'File tidak ditemukan' });
+      }
+
+      await deleteStoredFile(file);
+
+      db.prepare('DELETE FROM uploaded_files WHERE id = ?').run(id);
+      res.json({ message: 'File dihapus' });
+    } catch (err) {
+      res.status(500).json({ message: 'Gagal menghapus file: ' + err.message });
     }
-
-    // Delete from filesystem
-    const filepath = path.join(STORAGE_DIR, file.filename);
-    if (fs.existsSync(filepath)) {
-      fs.unlinkSync(filepath);
-    }
-
-    // Delete from database
-    db.prepare('DELETE FROM uploaded_files WHERE id = ?').run(id);
-
-    res.json({ message: 'File dihapus' });
   },
 
   getUserFiles(req, res) {

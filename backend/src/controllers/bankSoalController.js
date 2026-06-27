@@ -6,14 +6,19 @@ export const bankSoalController = {
     const { search, mapel, jenjang } = req.query;
     let query = `
       SELECT b.*, u.name as creator_name,
-        (SELECT COUNT(*) FROM soal s WHERE s.bank_soal_id = b.id) as total_soal_actual
+        (SELECT COUNT(*) FROM soal s WHERE s.bank_soal_id = b.id) as total_soal_actual,
+        (SELECT COUNT(*) FROM soal s WHERE s.bank_soal_id = b.id AND s.stimulus_content IS NOT NULL AND TRIM(s.stimulus_content) != '') as total_stimulus
       FROM bank_soal b
       JOIN users u ON u.id = b.user_id
       WHERE b.user_id = ?
     `;
     const params = [req.user.id];
 
-    if (search) { query += ' AND b.nama LIKE ?'; params.push(`%${search}%`); }
+    if (search) {
+      const keyword = `%${search}%`;
+      query += ' AND (b.nama LIKE ? OR b.mata_pelajaran LIKE ? OR b.kelas LIKE ? OR b.deskripsi LIKE ? OR b.tags LIKE ?)';
+      params.push(keyword, keyword, keyword, keyword, keyword);
+    }
     if (mapel) { query += ' AND b.mata_pelajaran = ?'; params.push(mapel); }
     if (jenjang) { query += ' AND b.jenjang = ?'; params.push(jenjang); }
 
@@ -82,8 +87,8 @@ export const bankSoalController = {
     // Duplicate soal juga
     const soals = db.prepare('SELECT * FROM soal WHERE bank_soal_id = ?').all(original.id);
     const insertSoal = db.prepare(`
-      INSERT INTO soal (id, bank_soal_id, user_id, bab, materi, jenis, pertanyaan, tingkat_kesulitan, skor, pembahasan, tags, nomor_urut)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO soal (id, bank_soal_id, user_id, bab, materi, jenis, stimulus_type, stimulus_content, pertanyaan, tingkat_kesulitan, skor, pembahasan, tags, nomor_urut, image_url, image_prompt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertOpsi = db.prepare(`
       INSERT INTO opsi_jawaban (id, soal_id, label, teks, is_benar, urutan) VALUES (?, ?, ?, ?, ?, ?)
@@ -92,7 +97,12 @@ export const bankSoalController = {
     const dupMany = db.transaction(() => {
       for (const s of soals) {
         const newSoalId = uuidv4();
-        insertSoal.run(newSoalId, newId, req.user.id, s.bab, s.materi, s.jenis, s.pertanyaan, s.tingkat_kesulitan, s.skor, s.pembahasan, s.tags, s.nomor_urut);
+        insertSoal.run(
+          newSoalId, newId, req.user.id, s.bab, s.materi, s.jenis,
+          s.stimulus_type || 'none', s.stimulus_content || null,
+          s.pertanyaan, s.tingkat_kesulitan, s.skor, s.pembahasan, s.tags,
+          s.nomor_urut, s.image_url || null, s.image_prompt || null
+        );
         const opsi = db.prepare('SELECT * FROM opsi_jawaban WHERE soal_id = ?').all(s.id);
         for (const o of opsi) {
           insertOpsi.run(uuidv4(), newSoalId, o.label, o.teks, o.is_benar, o.urutan);

@@ -1,8 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/init.js';
 import { shouldGenerateImage } from '../utils/imageGen.js';
+import { normalizeStimulus } from '../utils/stimulus.js';
 
 const VALID_JENIS = ['pg', 'pgk', 'essay', 'isian', 'benar_salah', 'menjodohkan'];
+const VALID_GENERATE_STIMULUS_TYPES = ['text', 'image', 'table', 'diagram', 'graph'];
 
 function normalizeJenisSoalList(jenisSoal, jumlah, jenisSoalList = []) {
   if (Array.isArray(jenisSoalList) && jenisSoalList.length > 0) {
@@ -27,7 +29,9 @@ function normalizeJenisSoalList(jenisSoal, jumlah, jenisSoalList = []) {
 function buildPrompt(config) {
   const {
     mata_pelajaran, bab, materi, jenis_soal_list, jumlah, tingkat_kesulitan,
-    jumlah_opsi, generate_pembahasan, kelas, jenjang, bahasa = 'Indonesia'
+    jumlah_opsi, generate_pembahasan, kelas, jenjang, bahasa = 'Indonesia',
+    stimulus_policy = 'optional', stimulus_types = [], stimulus_instruction = '',
+    shared_stimulus = null
   } = config;
 
   const jenisLabel = {
@@ -72,6 +76,37 @@ function buildPrompt(config) {
       '- Untuk Menjodohkan: tulis pasangan item langsung di pertanyaan dengan format kolom/pasangan yang jelas, lalu isi kunci_jawaban dengan pasangan yang benar.'
   ].filter(Boolean).join('\n');
 
+  const stimulusTypeLabels = {
+    text: 'stimulus teks/wacana',
+    image: 'stimulus gambar/ilustrasi',
+    table: 'stimulus tabel',
+    diagram: 'stimulus diagram',
+    graph: 'stimulus grafik'
+  };
+  const preferredStimulus = stimulus_types
+    .filter(type => VALID_GENERATE_STIMULUS_TYPES.includes(type))
+    .map(type => stimulusTypeLabels[type] || type);
+  const stimulusRule = stimulus_policy === 'required'
+    ? `Setiap soal wajib memiliki stimulus. Gunakan hanya tipe stimulus berikut bila relevan: ${preferredStimulus.join(' dan ') || 'stimulus teks, gambar, tabel, diagram, atau grafik'}.`
+    : stimulus_policy === 'optional'
+      ? `Bila membantu kualitas soal, kamu boleh menambahkan stimulus. Prioritaskan ${preferredStimulus.join(' atau ') || 'stimulus teks, gambar, tabel, diagram, atau grafik'}.`
+      : 'Jangan gunakan stimulus kecuali benar-benar diperlukan oleh struktur soal.';
+  const stimulusInstructionBlock = stimulus_instruction
+    ? `Arahan stimulus tambahan: ${stimulus_instruction}`
+    : null;
+  const sharedStimulusBlock = shared_stimulus
+    ? `\nSTIMULUS BERSAMA YANG WAJIB DIPAKAI SEMUA SOAL:\n${shared_stimulus}\n\nSemua soal di bawah harus merujuk pada stimulus bersama ini. Jangan membuat stimulus baru yang berbeda untuk masing-masing soal.`
+    : '';
+  const stimulusFormatGuide = `
+ATURAN STIMULUS:
+- Field "stimulus_type" wajib salah satu dari: none, ${VALID_GENERATE_STIMULUS_TYPES.join(', ')}
+- "stimulus_content" wajib berupa HTML valid dan self-contained, tanpa markdown dan tanpa code fence
+- Untuk text: gunakan <p>, <ul>, <ol>, <strong>, <em>
+- Untuk table: gunakan <table>, <thead>, <tbody>, <tr>, <th>, <td>
+- Untuk image, diagram, atau graph: gunakan HTML visual yang bisa langsung dirender, utamakan <figure> dengan inline <svg>; boleh memakai <img> hanya jika URL gambar publiknya benar-benar stabil
+- Untuk graph: sertakan label sumbu/legenda singkat bila relevan
+- Bila tidak ada stimulus, isi "stimulus_type" = "none" dan "stimulus_content" = ""`;
+
   return `Kamu adalah guru berpengalaman yang ahli membuat soal berkualitas tinggi.
 
 KONTEKS SOAL:
@@ -83,6 +118,10 @@ ${komposisi}
 
 Semua soal harus menggunakan ${difficultyDesc[tingkat_kesulitan] || 'tingkat sedang'}.
 ${formatPetunjuk}
+${stimulusRule}
+${sharedStimulusBlock}
+${stimulusInstructionBlock || ''}
+${stimulusFormatGuide}
 ${generate_pembahasan ? 'Sertakan pembahasan singkat dan jelas untuk setiap soal.' : 'Jangan sertakan pembahasan.'}
 
 ATURAN PENTING:
@@ -101,6 +140,8 @@ FORMAT OUTPUT (wajib JSON murni, tidak ada teks di luar JSON):
     {
       "pertanyaan": "teks pertanyaan",
       "jenis": "pg | pgk | benar_salah | isian | essay | menjodohkan",
+      "stimulus_type": "none | text | image | table | diagram | graph",
+      "stimulus_content": "HTML stimulus opsional. Untuk gambar/diagram/grafik, gunakan HTML visual self-contained yang bisa dirender langsung, terutama inline <svg>.",
       "tingkat_kesulitan": "${tingkat_kesulitan}",
       "opsi": [{"label": "A", "teks": "...", "is_benar": false}] atau [] jika tidak relevan,
       "kunci_jawaban": "isi untuk isian/essay/menjodohkan, null jika tidak relevan",
@@ -121,7 +162,8 @@ export const generateController = {
       bank_soal_id, bab, materi, jenis_soal, jenis_soal_list, jumlah = 5,
       tingkat_kesulitan = 'sedang', jumlah_opsi = 4,
       generate_pembahasan = false, model_id, mata_pelajaran,
-      kelas, jenjang
+      kelas, jenjang, stimulus_policy = 'optional', stimulus_types = [], stimulus_instruction = '',
+      stimulusId
     } = req.body;
 
     const normalizedJenisList = normalizeJenisSoalList(jenis_soal, jumlah, jenis_soal_list);
@@ -140,6 +182,19 @@ export const generateController = {
     const apiKeyConfig = db.prepare("SELECT value FROM app_config WHERE user_id = ? AND key = 'openrouter_api_key'").get(req.user.id);
     if (!apiKeyConfig) return res.status(400).json({ message: 'API Key OpenRouter belum dikonfigurasi' });
 
+    let sharedStimulus = null;
+    if (stimulusId) {
+      sharedStimulus = db.prepare(`
+        SELECT s.* FROM stimulus s
+        INNER JOIN bank_soal b ON b.id = s.bank_soal_id
+        WHERE s.id = ? AND s.bank_soal_id = ? AND b.user_id = ?
+      `).get(stimulusId, bank_soal_id, req.user.id);
+
+      if (!sharedStimulus) {
+        return res.status(404).json({ message: 'Stimulus tidak ditemukan' });
+      }
+    }
+
     const historyId = uuidv4();
     db.prepare(`
       INSERT INTO generate_history (id, user_id, bank_soal_id, model_id, model_name, total_soal_diminta, status, config_snapshot)
@@ -151,7 +206,11 @@ export const generateController = {
     const prompt = buildPrompt({
       mata_pelajaran: resolvedMapel,
       bab, materi, jenis_soal_list: normalizedJenisList, jumlah: totalJumlah, tingkat_kesulitan, jumlah_opsi,
-      generate_pembahasan, kelas: kelas || bank.kelas, jenjang: jenjang || bank.jenjang
+      generate_pembahasan, kelas: kelas || bank.kelas, jenjang: jenjang || bank.jenjang,
+      stimulus_policy: ['none', 'optional', 'required'].includes(stimulus_policy) ? stimulus_policy : 'optional',
+      stimulus_types: Array.isArray(stimulus_types) ? stimulus_types.filter(type => VALID_GENERATE_STIMULUS_TYPES.includes(type)) : [],
+      stimulus_instruction: typeof stimulus_instruction === 'string' ? stimulus_instruction.trim() : '',
+      shared_stimulus: sharedStimulus?.konten || null
     });
 
     // Setup SSE
@@ -257,8 +316,8 @@ export const generateController = {
 
       // Simpan soal + generate gambar secara paralel
       const insertSoal = db.prepare(`
-        INSERT INTO soal (id, bank_soal_id, user_id, bab, materi, jenis, pertanyaan, tingkat_kesulitan, pembahasan, tags, nomor_urut, image_url, image_prompt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO soal (id, bank_soal_id, user_id, stimulus_id, bab, materi, jenis, stimulus_type, stimulus_content, pertanyaan, tingkat_kesulitan, pembahasan, tags, nomor_urut, image_url, image_prompt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const insertOpsi = db.prepare(`
         INSERT INTO opsi_jawaban (id, soal_id, label, teks, is_benar, urutan) VALUES (?, ?, ?, ?, ?, ?)
@@ -267,6 +326,7 @@ export const generateController = {
 
       const maxNomor = db.prepare('SELECT MAX(nomor_urut) as m FROM soal WHERE bank_soal_id = ?').get(bank_soal_id).m || 0;
       const savedSoals = [];
+      const stimulusWarnings = [];
       const imageJobs = [];
 
       // Simpan semua soal dulu ke DB
@@ -281,8 +341,20 @@ export const generateController = {
           const soalJenis = s.jenis;
           const soalKesulitan = s.tingkat_kesulitan || tingkat_kesulitan;
 
+          const normalizedStimulus = normalizeStimulus(s.stimulus_type, s.stimulus_content, { mode: 'generate' });
+          if (normalizedStimulus.warnings.length) {
+            stimulusWarnings.push({
+              index: idx + 1,
+              requested_type: s.stimulus_type || 'none',
+              normalized_type: normalizedStimulus.stimulus_type,
+              messages: normalizedStimulus.warnings
+            });
+          }
+
           insertSoal.run(
-            soalId, bank_soal_id, req.user.id, bab, materi, soalJenis,
+            soalId, bank_soal_id, req.user.id, sharedStimulus?.id || null, bab, materi, soalJenis,
+            sharedStimulus ? 'text' : (VALID_GENERATE_STIMULUS_TYPES.includes(normalizedStimulus.stimulus_type) ? normalizedStimulus.stimulus_type : 'none'),
+            sharedStimulus ? sharedStimulus.konten : normalizedStimulus.stimulus_content,
             s.pertanyaan, soalKesulitan, s.pembahasan || null,
             '[]', maxNomor + idx + 1,
             null, // image_url — diisi nanti
@@ -304,6 +376,9 @@ export const generateController = {
           const opsi = db.prepare('SELECT * FROM opsi_jawaban WHERE soal_id = ? ORDER BY urutan').all(soalId);
           savedSoals.push({
             id: soalId,
+            stimulus_id: sharedStimulus?.id || null,
+            stimulus_type: sharedStimulus ? 'text' : (VALID_GENERATE_STIMULUS_TYPES.includes(normalizedStimulus.stimulus_type) ? normalizedStimulus.stimulus_type : 'none'),
+            stimulus_content: sharedStimulus ? sharedStimulus.konten : normalizedStimulus.stimulus_content,
             pertanyaan: s.pertanyaan,
             jenis: soalJenis,
             opsi,
@@ -328,6 +403,7 @@ export const generateController = {
       sendEvent('done', {
         message: `${savedSoals.length} soal berhasil dibuat`,
         soal: savedSoals,
+        stimulus_warnings: stimulusWarnings,
         history_id: historyId,
         duration_ms: duration
       });

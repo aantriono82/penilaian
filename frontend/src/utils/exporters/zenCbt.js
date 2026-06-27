@@ -81,6 +81,7 @@ async function buildSoalTable(soal, nomor) {
   rows.push(row('No', nomor))
   // Tipe
   rows.push(row('Tipe', ZEN_TYPE[soal.jenis] || soal.jenis))
+  if (soal.stimulus_content) rows.push(await rowHtml('Stimulus', soal.stimulus_content))
   // Teks (HTML)
   rows.push(await rowHtml('Teks', soal.pertanyaan))
 

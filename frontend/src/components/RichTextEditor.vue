@@ -86,6 +86,31 @@
 
       <div class="rich-editor__divider"></div>
 
+      <div class="rich-editor__group">
+        <button type="button" @click="insertTable"
+          :class="{ 'is-active': editor.isActive('table') }"
+          class="toolbar-btn" title="Insert Table">
+          <span class="text-[11px] font-semibold">Tbl</span>
+        </button>
+        <button type="button" @click="editor.chain().focus().addRowAfter().run()"
+          :disabled="!editor.isActive('table')"
+          class="toolbar-btn" title="Add Row">
+          <span class="text-[11px] font-semibold">+R</span>
+        </button>
+        <button type="button" @click="editor.chain().focus().addColumnAfter().run()"
+          :disabled="!editor.isActive('table')"
+          class="toolbar-btn" title="Add Column">
+          <span class="text-[11px] font-semibold">+C</span>
+        </button>
+        <button type="button" @click="editor.chain().focus().deleteTable().run()"
+          :disabled="!editor.isActive('table')"
+          class="toolbar-btn" title="Delete Table">
+          <span class="text-[11px] font-semibold">Del</span>
+        </button>
+      </div>
+
+      <div class="rich-editor__divider"></div>
+
       <!-- Media & Extras -->
       <div class="rich-editor__group">
         <button type="button" @click="showImageInput = !showImageInput"
@@ -147,7 +172,7 @@
           <span class="text-xs text-slate-400">atau</span>
           <span class="text-xs text-slate-400">Tempel gambar <kbd class="px-1 py-0.5 bg-slate-100 rounded text-[10px]">Ctrl+V</kbd></span>
         </div>
-        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileSelected" />
+        <input ref="fileInput" type="file" :accept="activeAccept || props.uploadAccept" class="hidden" @change="onFileSelected" />
         <button type="button" @click="showImageInput = false; imageUrl = ''"
           class="absolute top-2 right-2 text-slate-400 hover:text-slate-600">
           <X class="w-4 h-4" />
@@ -167,11 +192,16 @@
 
 <script setup>
 import { ref, watch, onBeforeUnmount, computed } from 'vue'
+import { useToast } from 'vue-toastification'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
+import { Table } from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableHeader from '@tiptap/extension-table-header'
+import TableCell from '@tiptap/extension-table-cell'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import { TextStyle } from '@tiptap/extension-text-style'
@@ -186,15 +216,19 @@ import api from '../utils/api.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
-  placeholder: { type: String, default: 'Tulis teks di sini...' }
+  placeholder: { type: String, default: 'Tulis teks di sini...' },
+  uploadAccept: { type: String, default: 'image/*' },
+  uploadPrecheck: { type: Function, default: null }
 })
 
 const emit = defineEmits(['update:modelValue'])
+const toast = useToast()
 
 const showImageInput = ref(false)
 const imageUrl = ref('')
 const isFocused = ref(false)
 const uploading = ref(false)
+const activeAccept = ref('')
 
 /**
  * Upload file ke server → return URL
@@ -214,6 +248,15 @@ async function uploadFile(file) {
  */
 async function handleImageFile(file) {
   if (!file || !editor.value) return
+
+  const precheckMessage = typeof props.uploadPrecheck === 'function'
+    ? props.uploadPrecheck(file)
+    : null
+  if (precheckMessage) {
+    toast.error(precheckMessage)
+    return
+  }
+
   uploading.value = true
   try {
     const url = await uploadFile(file)
@@ -251,6 +294,12 @@ const editor = useEditor({
     Placeholder.configure({
       placeholder: props.placeholder
     }),
+    Table.configure({
+      resizable: true
+    }),
+    TableRow,
+    TableHeader,
+    TableCell,
     Underline,
     TextAlign.configure({
       types: ['heading', 'paragraph']
@@ -318,18 +367,29 @@ function insertImage() {
   showImageInput.value = false
 }
 
+function insertTable() {
+  if (!editor.value) return
+  editor.value.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+}
+
 /**
  * Trigger file input dialog
  */
 const fileInput = ref(null)
-function openFilePicker() {
+function openFilePicker(acceptOverride = '') {
+  activeAccept.value = acceptOverride || props.uploadAccept
   fileInput.value?.click()
 }
 function onFileSelected(e) {
   const file = e.target.files?.[0]
   if (file) handleImageFile(file)
+  activeAccept.value = props.uploadAccept
   e.target.value = '' // reset
 }
+
+defineExpose({
+  openFilePicker
+})
 
 onBeforeUnmount(() => {
   editor.value?.destroy()
@@ -413,6 +473,16 @@ onBeforeUnmount(() => {
 }
 .rich-editor__content .tiptap .editor-link {
   @apply text-primary-600 underline hover:text-primary-700;
+}
+.rich-editor__content .tiptap table {
+  @apply w-full border-collapse my-3 text-sm;
+}
+.rich-editor__content .tiptap th,
+.rich-editor__content .tiptap td {
+  @apply border border-slate-300 px-2 py-1 align-top;
+}
+.rich-editor__content .tiptap th {
+  @apply bg-slate-100 font-semibold;
 }
 .rich-editor__content .tiptap code {
   @apply bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-xs font-mono;

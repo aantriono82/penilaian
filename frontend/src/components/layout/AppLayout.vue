@@ -1,24 +1,24 @@
 <template>
-  <div class="flex h-screen overflow-hidden bg-slate-50">
+  <div class="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
     <!-- Sidebar -->
     <aside
-      class="flex flex-col w-64 bg-white border-r border-slate-200 flex-shrink-0 transition-all duration-300"
+      class="flex flex-col w-64 bg-white border-r border-slate-200 flex-shrink-0 transition-all duration-300 dark:bg-slate-900 dark:border-slate-800"
       :class="{ '-ml-64': !sidebarOpen }"
     >
       <!-- Logo -->
-      <div class="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
+      <div class="flex items-center gap-3 px-5 py-5 border-b border-slate-100 dark:border-slate-800">
         <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
           <FileText class="w-4 h-4 text-white" />
         </div>
         <div>
-          <h1 class="text-sm font-bold text-slate-900">Atiga Asesmen</h1>
-          <p class="text-xs text-slate-500">AI Question Generator</p>
+          <h1 class="text-sm font-bold text-slate-900 dark:text-slate-50">Atiga Asesmen</h1>
+          <p class="text-xs text-slate-500 dark:text-slate-400">AI Question Generator</p>
         </div>
       </div>
 
       <!-- Nav -->
       <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        <p class="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Menu</p>
+        <p class="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider dark:text-slate-500">Menu</p>
 
         <RouterLink to="/" class="sidebar-link" :class="{ active: $route.path === '/' }">
           <LayoutDashboard class="w-4 h-4" /> Dashboard
@@ -34,8 +34,8 @@
           <Clock class="w-4 h-4" /> Riwayat Generate
         </RouterLink>
 
-        <div class="my-3 border-t border-slate-100" />
-        <p class="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Pengaturan</p>
+        <div class="my-3 border-t border-slate-100 dark:border-slate-800" />
+        <p class="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider dark:text-slate-500">Pengaturan</p>
 
         <RouterLink to="/konfigurasi" class="sidebar-link" :class="{ active: $route.path === '/konfigurasi' }">
           <Settings class="w-4 h-4" /> Konfigurasi
@@ -47,16 +47,16 @@
 
       <!-- User profile -->
       <div class="border-t border-slate-100 p-3">
-        <RouterLink to="/profil" class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors">
+        <RouterLink to="/profil" class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors dark:hover:bg-slate-800">
           <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
             {{ auth.user?.name?.charAt(0)?.toUpperCase() }}
           </div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-slate-800 truncate">{{ auth.user?.name }}</p>
-            <p class="text-xs text-slate-500 truncate capitalize">{{ auth.user?.role }}</p>
+            <p class="text-sm font-medium text-slate-800 truncate dark:text-slate-100">{{ auth.user?.name }}</p>
+            <p class="text-xs text-slate-500 truncate capitalize dark:text-slate-400">{{ auth.user?.role }}</p>
           </div>
         </RouterLink>
-        <button @click="handleLogout" class="btn-ghost w-full mt-1 text-xs justify-center text-red-500 hover:bg-red-50 hover:text-red-700">
+        <button @click="handleLogout" class="btn-ghost w-full mt-1 text-xs justify-center text-red-500 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40">
           <LogOut class="w-3.5 h-3.5" /> Keluar
         </button>
       </div>
@@ -65,16 +65,38 @@
     <!-- Main content -->
     <div class="flex-1 flex flex-col overflow-hidden">
       <!-- Topbar -->
-      <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
-        <div class="flex items-center gap-3">
+      <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0 dark:bg-slate-900 dark:border-slate-800">
+        <div class="flex items-center gap-3 min-w-0">
           <button @click="sidebarOpen = !sidebarOpen" class="btn-ghost p-2">
             <Menu class="w-5 h-5" />
           </button>
-          <nav class="flex items-center gap-1 text-sm text-slate-600 font-medium">
+          <nav class="flex items-center gap-1 text-sm text-slate-600 font-medium dark:text-slate-300 min-w-0">
             <span>{{ pageTitle }}</span>
           </nav>
+          <form class="relative hidden md:block ml-4" @submit.prevent="submitSearch">
+            <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              v-model="searchTerm"
+              type="text"
+              class="input pl-9 pr-9 w-72"
+              placeholder="Cari bank soal..."
+            />
+            <button
+              v-if="searchTerm"
+              type="button"
+              @click="clearSearch"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </form>
         </div>
         <div class="flex items-center gap-2">
+          <button @click="theme.toggleTheme" class="btn-ghost p-2" :title="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'">
+            <SunMedium v-if="theme.isDark" class="w-4 h-4" />
+            <MoonStar v-else class="w-4 h-4" />
+          </button>
           <RouterLink to="/generate" class="btn-primary btn-sm">
             <Sparkles class="w-3.5 h-3.5" /> Generate Soal
           </RouterLink>
@@ -98,14 +120,17 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LayoutDashboard, BookOpen, Sparkles, Clock,
-  Settings, ShieldCheck, LogOut, Menu, FileText
+  Settings, ShieldCheck, LogOut, Menu, FileText, SunMedium, MoonStar, Search, X
 } from 'lucide-vue-next'
 import { useAuthStore } from '../../stores/auth.js'
+import { useThemeStore } from '../../stores/theme.js'
 
 const sidebarOpen = ref(true)
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const theme = useThemeStore()
+const searchTerm = ref('')
 
 const titleMap = {
   '/': 'Dashboard',
@@ -126,6 +151,17 @@ const pageTitle = computed(() => {
 function handleLogout() {
   auth.logout()
   router.push('/login')
+}
+
+function submitSearch() {
+  const q = searchTerm.value.trim()
+  if (!q) return router.push('/bank-soal')
+  router.push({ path: '/bank-soal', query: { search: q } })
+}
+
+function clearSearch() {
+  searchTerm.value = ''
+  if (route.path === '/bank-soal') router.push({ path: '/bank-soal' })
 }
 </script>
 

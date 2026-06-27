@@ -35,6 +35,11 @@ const routes = [
         component: () => import('../views/BankSoalDetailView.vue')
       },
       {
+        path: 'bank-soal/:bankId/soal/baru',
+        name: 'SoalCreate',
+        component: () => import('../views/SoalEditView.vue')
+      },
+      {
         path: 'generate',
         name: 'Generate',
         component: () => import('../views/GenerateView.vue')

@@ -14,13 +14,16 @@
     <div class="flex gap-3 mb-5 flex-wrap">
       <div class="relative">
         <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input v-model="search" type="text" class="input pl-9 w-64" placeholder="Cari nama bank soal..." @input="debouncedFetch" />
+        <input v-model="search" type="text" class="input pl-9 w-72" placeholder="Cari nama, mapel, kelas, atau deskripsi..." @input="debouncedFetch" />
       </div>
       <input v-model="filterMapel" type="text" class="input w-48" placeholder="Filter mata pelajaran" @change="fetchBanks" />
       <select v-model="filterJenjang" class="input w-36" @change="fetchBanks">
         <option value="">Semua Jenjang</option>
         <option>SD</option><option>SMP</option><option>SMA</option><option>SMK</option><option>PT</option>
       </select>
+      <button v-if="search || filterMapel || filterJenjang" @click="resetFilters" class="btn-secondary btn-sm">
+        <X class="w-3.5 h-3.5" /> Reset
+      </button>
     </div>
 
     <!-- Loading skeleton -->
@@ -70,6 +73,7 @@
             <span v-if="bank.jenjang" class="badge badge-gray">{{ bank.jenjang }}</span>
             <span v-if="bank.kelas" class="badge badge-gray">Kelas {{ bank.kelas }}</span>
             <span v-if="bank.semester" class="badge badge-gray">Sem {{ bank.semester }}</span>
+            <span v-if="bank.total_stimulus" class="badge badge-primary">{{ bank.total_stimulus }} stimulus</span>
           </div>
           <div class="flex items-center justify-between text-xs text-slate-500">
             <span class="font-semibold text-slate-700 text-base">{{ bank.total_soal_actual || bank.total_soal || 0 }} <span class="text-xs font-normal">soal</span></span>
@@ -149,15 +153,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import {
   Plus, Search, BookOpen, MoreVertical, Pencil, Copy, Download,
-  Trash2, FolderOpen, Sparkles, Loader2
+  Trash2, FolderOpen, Sparkles, Loader2, X
 } from 'lucide-vue-next'
 import { useBankSoalStore } from '../stores/bankSoal.js'
 
 const toast = useToast()
+const route = useRoute()
 const store = useBankSoalStore()
 const banks = ref([])
 const loading = ref(false)
@@ -185,6 +191,12 @@ async function fetchBanks() {
 
 let debounceTimer
 function debouncedFetch() { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchBanks, 400) }
+function resetFilters() {
+  search.value = ''
+  filterMapel.value = ''
+  filterJenjang.value = ''
+  fetchBanks()
+}
 function toggleMenu(id) { activeMenu.value = activeMenu.value === id ? null : id }
 function openEdit(bank) { editMode.value = true; editId.value = bank.id; formData.value = { ...bank }; showModal.value = true; activeMenu.value = null }
 function closeModal() { showModal.value = false; editMode.value = false; editId.value = null; formData.value = { ...emptyForm } }
@@ -219,6 +231,14 @@ function formatDate(dt) {
 }
 
 function handleOutsideClick(e) { if (activeMenu.value && !e.target.closest('.relative')) activeMenu.value = null }
-onMounted(() => { fetchBanks(); document.addEventListener('click', handleOutsideClick) })
+watch(() => route.query.search, (value) => {
+  const next = typeof value === 'string' ? value : ''
+  if (search.value !== next) {
+    search.value = next
+    fetchBanks()
+  }
+}, { immediate: true })
+
+onMounted(() => { document.addEventListener('click', handleOutsideClick) })
 onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 </script>

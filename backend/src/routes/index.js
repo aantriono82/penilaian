@@ -6,6 +6,7 @@ import { generateController } from '../controllers/generateController.js';
 import { configController } from '../controllers/configController.js';
 import { adminController } from '../controllers/adminController.js';
 import { uploadController } from '../controllers/uploadController.js';
+import { stimulusController, stimulusUpload } from '../controllers/stimulusController.js';
 import { authMiddleware, adminOnly } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 
@@ -44,6 +45,11 @@ router.post('/generate', authMiddleware, generateController.generate);
 router.get('/generate/history', authMiddleware, generateController.getHistory);
 router.delete('/generate/history/:id', authMiddleware, generateController.deleteHistory);
 router.post('/generate/history/bulk-delete', authMiddleware, generateController.bulkDeleteHistory);
+
+// STIMULUS
+router.post('/stimulus', authMiddleware, stimulusController.generate);
+router.post('/stimulus/upload', authMiddleware, stimulusUpload.single('file'), stimulusController.upload);
+router.put('/stimulus/:id', authMiddleware, stimulusController.update);
 
 // CONFIG
 router.get('/config', authMiddleware, configController.getConfig);

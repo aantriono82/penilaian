@@ -1,17 +1,25 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-primary-50 via-white to-cyan-50 flex items-center justify-center p-4">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 relative">
+    <button
+      @click="theme.toggleTheme"
+      class="absolute right-4 top-4 btn-ghost p-2"
+      :title="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+    >
+      <SunMedium v-if="theme.isDark" class="w-4 h-4" />
+      <MoonStar v-else class="w-4 h-4" />
+    </button>
     <div class="w-full max-w-md animate-slide-up">
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-2xl mb-4 shadow-lg shadow-primary-200">
           <FileText class="w-7 h-7 text-white" />
         </div>
-        <h1 class="text-2xl font-bold text-slate-900">Atiga Asesmen</h1>
-        <p class="text-slate-500 mt-1">Buat akun baru</p>
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-50">Atiga Asesmen</h1>
+        <p class="text-slate-500 mt-1 dark:text-slate-400">Buat akun baru</p>
       </div>
 
       <div class="card">
         <div class="card-body">
-          <h2 class="text-lg font-semibold text-slate-800 mb-6">Daftar Akun</h2>
+          <h2 class="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-6">Daftar Akun</h2>
           <form @submit.prevent="handleRegister" class="space-y-4">
             <div class="form-group">
               <label class="label">Nama Lengkap</label>
@@ -51,11 +59,13 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { FileText, AlertCircle, Loader2, ArrowRight } from 'lucide-vue-next'
+import { FileText, AlertCircle, Loader2, ArrowRight, SunMedium, MoonStar } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth.js'
+import { useThemeStore } from '../stores/theme.js'
 
 const router = useRouter()
 const auth = useAuthStore()
+const theme = useThemeStore()
 const form = ref({ name: '', email: '', password: '', lembaga: '' })
 const loading = ref(false)
 const error = ref('')

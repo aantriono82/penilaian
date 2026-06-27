@@ -129,7 +129,7 @@
           </h3>
           <span class="badge badge-gray">{{ filteredSoal.length }} soal</span>
         </div>
-        <div ref="previewArea" class="flex-1 overflow-y-auto bg-white p-8 min-h-0" id="preview-area">
+        <div class="flex-1 overflow-y-auto bg-white p-8 min-h-0" id="preview-area">
             <!-- Banner info CBT -->
             <div v-if="format !== 'default'" class="mb-5 space-y-2">
               <div class="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
@@ -178,16 +178,37 @@
             <!-- Soal -->
             <div class="space-y-4 text-sm">
               <div v-for="(soal, idx) in filteredSoal" :key="soal.id">
+                <div v-if="soal.stimulus_content" class="mb-2 ml-5 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div class="mb-1 flex items-center gap-2 flex-wrap">
+                    <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Stimulus {{ stimulusLabel[soal.stimulus_type] || '' }}
+                    </p>
+                    <span
+                      v-if="hasVisualMarkup(soal.stimulus_content)"
+                      class="badge"
+                      :class="isSvgStimulus(soal.stimulus_content) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
+                    >
+                      {{ isSvgStimulus(soal.stimulus_content) ? 'SVG' : 'Raster' }}
+                    </span>
+                  </div>
+                  <div v-if="hasVisualMarkup(soal.stimulus_content)" class="space-y-2">
+                    <MathHtml :html="soal.stimulus_content" content-class="soal-content text-slate-700" />
+                    <p class="text-[11px] text-slate-500">
+                      {{ visualStimulusHint(soal.stimulus_content) }}
+                    </p>
+                  </div>
+                  <MathHtml v-else :html="soal.stimulus_content" content-class="soal-content text-slate-700" />
+                </div>
                 <div class="font-medium leading-relaxed soal-content">
                   <span class="font-bold">{{ layout.startNumber + idx }}.</span>
-                  <span v-html="soal.pertanyaan"></span>
+                  <MathHtml :html="soal.pertanyaan" tag="span" content-class="soal-content" />
                 </div>
 
                 <div v-if="soal.opsi?.length && ['pg','pgk'].includes(soal.jenis)" class="mt-1.5 ml-5 space-y-0.5">
                   <p v-for="opsi in soal.opsi" :key="opsi.id"
                     :class="layout.showKunci && opsi.is_benar ? 'text-emerald-700 font-semibold' : 'text-slate-700'">
                     <span class="font-bold">{{ opsi.label }}.</span>
-                    <span class="soal-content" v-html="opsi.teks"></span>
+                    <MathHtml :html="opsi.teks" tag="span" content-class="soal-content" />
                     <CheckCircle v-if="layout.showKunci && opsi.is_benar" class="inline w-3.5 h-3.5 ml-1 text-emerald-500" />
                   </p>
                 </div>
@@ -205,7 +226,7 @@
                 <div v-if="layout.showPembahasan && soal.pembahasan"
                   class="mt-1.5 ml-5 text-xs text-slate-500 bg-amber-50 p-2 rounded border-l-2 border-amber-300">
                   <strong>Pembahasan:</strong>
-                  <span class="soal-content" v-html="soal.pembahasan"></span>
+                  <MathHtml :html="soal.pembahasan" tag="span" content-class="soal-content" />
                 </div>
               </div>
             </div>
@@ -228,7 +249,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUpdated, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import {
@@ -238,7 +259,7 @@ import {
 import { saveAs } from 'file-saver'
 import api from '../utils/api.js'
 import { exportDocx, FULLY_SUPPORTED } from '../utils/exporters/index.js'
-import { renderMathInContainer } from '../utils/mathRenderer.js'
+import MathHtml from '../components/MathHtml.vue'
 
 const route = useRoute()
 const toast = useToast()
@@ -246,8 +267,6 @@ const bankId = route.params.bankId
 const bank = ref(null)
 const allSoal = ref([])
 const exporting = ref(null)
-const previewArea = ref(null)
-
 const layout = ref({
   title: 'SOAL UJIAN', institution: '', subject: '', grade: '',
   semester: '', year: '', duration: 90,
@@ -268,6 +287,13 @@ const jenisOptions = [
   { value: 'essay', label: 'Essay' }
 ]
 const selectedJenis = ref(['pg', 'pgk', 'benar_salah', 'isian', 'essay'])
+const stimulusLabel = {
+  text: 'Teks',
+  image: 'Gambar',
+  table: 'Tabel',
+  diagram: 'Diagram',
+  graph: 'Grafik'
+}
 const jenisCount = computed(() =>
   allSoal.value.reduce((a, s) => { a[s.jenis] = (a[s.jenis] || 0) + 1; return a }, {})
 )
@@ -317,9 +343,17 @@ function exportPDF() {
   window.print()
 }
 
-async function renderPreviewMath() {
-  await nextTick()
-  await renderMathInContainer(previewArea.value)
+function hasVisualMarkup(html = '') {
+  return /<(img|svg|figure|canvas)\b/i.test(html || '')
+}
+
+function isSvgStimulus(html = '') {
+  return /<svg\b|data:image\/svg\+xml|src=["'][^"']+\.svg(?:\?[^"']*)?["']/i.test(html || '')
+}
+
+function visualStimulusHint(html = '') {
+  if (isSvgStimulus(html)) return 'Stimulus visual berbasis SVG'
+  return 'Stimulus visual berbasis gambar'
 }
 
 onMounted(async () => {
@@ -333,11 +367,6 @@ onMounted(async () => {
   layout.value.grade = bank.value.kelas || ''
   layout.value.semester = bank.value.semester || ''
   layout.value.year = bank.value.tahun_ajaran || ''
-  await renderPreviewMath()
-})
-
-onUpdated(() => {
-  renderPreviewMath()
 })
 </script>
 
@@ -372,5 +401,14 @@ onUpdated(() => {
 }
 .soal-content :deep(ul), .soal-content :deep(ol) {
   @apply pl-5 my-0.5;
+}
+.soal-content :deep(table) {
+  @apply w-full border-collapse my-2 text-xs sm:text-sm;
+}
+.soal-content :deep(th), .soal-content :deep(td) {
+  @apply border border-slate-300 px-2 py-1 align-top;
+}
+.soal-content :deep(th) {
+  @apply bg-slate-100 font-semibold;
 }
 </style>

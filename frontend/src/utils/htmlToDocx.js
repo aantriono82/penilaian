@@ -11,6 +11,10 @@ async function fetchImageAsBuffer(url) {
   return await res.arrayBuffer()
 }
 
+function textToBuffer(text) {
+  return new TextEncoder().encode(text).buffer
+}
+
 /**
  * Detect image MIME type from buffer
  */
@@ -19,6 +23,7 @@ function getMimeType(buffer) {
   if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png'
   if (bytes[0] === 0xFF && bytes[1] === 0xD8) return 'image/jpeg'
   if (bytes[0] === 0x47 && bytes[1] === 0x49) return 'image/gif'
+  if (bytes[0] === 0x3C && bytes[1] === 0x73 && bytes[2] === 0x76 && bytes[3] === 0x67) return 'image/svg+xml'
   return 'image/png'
 }
 
@@ -26,11 +31,72 @@ function getMimeType(buffer) {
  * Convert data URI → ArrayBuffer
  */
 function dataUriToBuffer(dataUri) {
-  const base64 = dataUri.split(',')[1]
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes.buffer
+  const [meta, payload = ''] = dataUri.split(',', 2)
+  if (meta.includes(';base64')) {
+    const binary = atob(payload)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return bytes.buffer
+  }
+
+  return textToBuffer(decodeURIComponent(payload))
+}
+
+function getMimeTypeFromDataUri(dataUri) {
+  const match = dataUri.match(/^data:([^;,]+)[;,]/i)
+  return match?.[1]?.toLowerCase() || getMimeType(dataUriToBuffer(dataUri))
+}
+
+async function svgStringToPngBuffer(svgString) {
+  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = url
+    })
+
+    const width = Math.max(1, Math.round(image.width || 800))
+    const height = Math.max(1, Math.round(image.height || 600))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Canvas context tidak tersedia')
+    context.drawImage(image, 0, 0, width, height)
+
+    const pngBlob = await new Promise((resolve, reject) => {
+      canvas.toBlob(result => {
+        if (result) resolve(result)
+        else reject(new Error('Gagal mengubah SVG ke PNG'))
+      }, 'image/png')
+    })
+
+    return await pngBlob.arrayBuffer()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+async function buildImageRunFromBuffer(buffer, mimeType = getMimeType(buffer)) {
+  let imageBuffer = buffer
+  let imageType = mimeType
+
+  if (mimeType === 'image/svg+xml') {
+    const svgString = new TextDecoder().decode(buffer)
+    imageBuffer = await svgStringToPngBuffer(svgString)
+    imageType = 'image/png'
+  }
+
+  return new ImageRun({
+    data: imageBuffer,
+    transformation: { width: 400, height: 300 },
+    type: imageType
+  })
 }
 
 /**
@@ -53,20 +119,29 @@ async function inlineToRuns(node) {
     if (!src) return []
     try {
       let buffer
+      let mimeType
       if (src.startsWith('data:')) {
         buffer = dataUriToBuffer(src)
+        mimeType = getMimeTypeFromDataUri(src)
       } else {
         buffer = await fetchImageAsBuffer(src)
+        mimeType = getMimeType(buffer)
       }
-      const mimeType = getMimeType(buffer)
-      return [new ImageRun({
-        data: buffer,
-        transformation: { width: 400, height: 300 },
-        type: mimeType
-      })]
+      return [await buildImageRunFromBuffer(buffer, mimeType)]
     } catch (err) {
       console.warn('Gagal embed gambar ke DOCX:', src, err)
       return [new TextRun({ text: `[Gambar: ${src}]`, italics: true, color: '999999' })]
+    }
+  }
+
+  if (tag === 'SVG') {
+    try {
+      const serialized = new XMLSerializer().serializeToString(node)
+      const buffer = textToBuffer(serialized)
+      return [await buildImageRunFromBuffer(buffer, 'image/svg+xml')]
+    } catch (err) {
+      console.warn('Gagal embed SVG ke DOCX:', err)
+      return [new TextRun({ text: '[Diagram/Grafik SVG]', italics: true, color: '999999' })]
     }
   }
 
@@ -142,6 +217,26 @@ async function blockToStructures(el) {
       }
     }
     return items
+  }
+
+  // Table -> flatten per row for DOCX export compatibility
+  if (tag === 'TABLE') {
+    const rows = []
+    for (const tr of el.querySelectorAll('tr')) {
+      const cells = []
+      for (const cell of tr.children) {
+        if (!['TH', 'TD'].includes(cell.tagName)) continue
+        const text = (cell.textContent || '').trim()
+        cells.push(text)
+      }
+      if (cells.length > 0) {
+        rows.push({
+          runs: [new TextRun({ text: cells.join(' | ') })],
+          options: { indent: { left: 240 } }
+        })
+      }
+    }
+    return rows
   }
 
   // Blockquote

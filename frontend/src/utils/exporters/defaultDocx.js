@@ -43,6 +43,13 @@ export async function exportDefaultDocx({ soal, layout, options = {} }) {
     const s = soal[idx]
     const num = startNumber + idx
 
+    if (s.stimulus_content) {
+      children.push(new Paragraph({ children: [new TextRun({ text: 'Stimulus', bold: true })] }))
+      const stimulusStructs = await htmlToDocxStructures(s.stimulus_content)
+      children.push(...buildDocxParagraphs(stimulusStructs, { indent: { left: 240 } }))
+      children.push(new Paragraph({ text: '' }))
+    }
+
     const pertanyaanStructs = await htmlToDocxStructures(s.pertanyaan)
     if (pertanyaanStructs.length > 0) {
       const first = pertanyaanStructs[0]

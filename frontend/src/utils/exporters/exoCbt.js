@@ -129,6 +129,10 @@ async function buildSoalTable(soal, nomor) {
   rows.push(row('KJ', kj, SH_GREEN, SH_GREEN))
   rows.push(row('ABS', abs, SH_GREEN, SH_GREEN))
 
+  if (soal.stimulus_content) {
+    rows.push(await rowHtml('Stimulus', soal.stimulus_content))
+  }
+
   // ── Baris 5: nomor → pertanyaan ──
   rows.push(await rowHtml(`${nomor}.`, soal.pertanyaan, SH_BLUE))
 

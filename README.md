@@ -11,6 +11,7 @@ Aplikasi berbasis web untuk generate soal ujian menggunakan AI (OpenRouter), ber
 - 🌊 **Streaming real-time** — lihat soal dibuat token per token
 - 💾 **Simpan ke database** SQLite — tidak perlu server database eksternal
 - ✏️ **Edit soal** secara manual setelah generate
+- 🧩 **Stimulus per soal**: teks, gambar, tabel, diagram, dan grafik
 - 📤 **Export ke DOCX** (Microsoft Word) dan PDF via print browser
 - 👥 **Multi-user** dengan role Admin & Guru
 - 🔧 **Konfigurasi fleksibel**: tambah/hapus model AI, custom prompt template
@@ -44,7 +45,7 @@ cp .env.example .env
 
 Isi `.env`:
 ```
-PORT=3002
+PORT=3003
 JWT_SECRET=isi_dengan_string_acak_panjang_minimal_32_karakter
 JWT_EXPIRES_IN=7d
 DB_PATH=./data/atiga-asesmen.db
@@ -53,6 +54,18 @@ FRONTEND_URL=http://localhost:5173
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_HTTP_REFERER=http://localhost:5173
 OPENROUTER_X_TITLE=Atiga Asesmen
+FILE_STORAGE_DRIVER=local
+```
+
+Opsional untuk penyimpanan aset stimulus via RustFS (S3-compatible):
+```env
+FILE_STORAGE_DRIVER=rustfs
+RUSTFS_ENDPOINT=http://localhost:9000
+RUSTFS_REGION=auto
+RUSTFS_ACCESS_KEY_ID=your-access-key
+RUSTFS_SECRET_ACCESS_KEY=your-secret-key
+RUSTFS_BUCKET=atiga-stimuli
+RUSTFS_PUBLIC_BASE_URL=http://localhost:9000/atiga-stimuli
 ```
 
 Opsional untuk frontend dev, jika backend Anda jalan di host/port lain:
@@ -90,6 +103,8 @@ Buka `http://localhost:5173`
 2. **Konfigurasi** → masukkan **OpenRouter API Key** (gratis di openrouter.ai/keys)
 3. **Konfigurasi** → tambah model AI (klik "Muat Daftar Model" untuk browse)
 4. **Generate Soal** → buat bank soal, isi data, pilih model, klik Generate!
+
+Catatan: generator AI mendukung stimulus `text`, `image`, `table`, `diagram`, dan `graph`. Untuk stimulus visual, output disimpan sebagai HTML yang dapat dirender langsung, dan diagram/grafik inline SVG akan ikut diproses saat export DOCX.
 
 ---
 

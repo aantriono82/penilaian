@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/init.js';
+import { normalizeStimulus } from '../utils/stimulus.js';
 
 function getSoalWithOpsi(soalId) {
   const soal = db.prepare('SELECT * FROM soal WHERE id = ?').get(soalId);
@@ -16,7 +17,7 @@ function updateBankTotal(bankId) {
 export const soalController = {
   getByBank(req, res) {
     const { bank_soal_id } = req.params;
-    const { jenis, kesulitan, bab, verified, page = 1, limit = 50 } = req.query;
+    const { jenis, kesulitan, bab, verified, has_stimulus, search, page = 1, limit = 50 } = req.query;
 
     // Verify bank belongs to user
     const bank = db.prepare('SELECT id FROM bank_soal WHERE id = ? AND user_id = ?').get(bank_soal_id, req.user.id);
@@ -28,9 +29,21 @@ export const soalController = {
     if (kesulitan) { query += ' AND tingkat_kesulitan = ?'; params.push(kesulitan); }
     if (bab) { query += ' AND bab LIKE ?'; params.push(`%${bab}%`); }
     if (verified !== undefined) { query += ' AND is_verified = ?'; params.push(verified === 'true' ? 1 : 0); }
+    if (has_stimulus === 'true') query += " AND stimulus_content IS NOT NULL AND TRIM(stimulus_content) != ''";
+    if (has_stimulus === 'false') query += " AND (stimulus_content IS NULL OR TRIM(stimulus_content) = '')";
+    if (search) {
+      const keyword = `%${search}%`;
+      query += ` AND (
+        bab LIKE ? OR materi LIKE ? OR pertanyaan LIKE ? OR pembahasan LIKE ? OR stimulus_content LIKE ? OR tags LIKE ? OR EXISTS (
+          SELECT 1 FROM opsi_jawaban o
+          WHERE o.soal_id = soal.id AND (o.teks LIKE ? OR o.label LIKE ?)
+        )
+      )`;
+      params.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword);
+    }
 
     const offset = (Number(page) - 1) * Number(limit);
-    const total = db.prepare(`SELECT COUNT(*) as c FROM soal WHERE bank_soal_id = ?${jenis ? ' AND jenis = ?' : ''}`).get(...[bank_soal_id, ...(jenis ? [jenis] : [])]).c;
+    const total = db.prepare(`SELECT COUNT(*) as c ${query.slice(query.indexOf('FROM'))}`).get(...params).c;
 
     query += ` ORDER BY nomor_urut ASC, created_at ASC LIMIT ? OFFSET ?`;
     params.push(Number(limit), offset);
@@ -52,19 +65,23 @@ export const soalController = {
   },
 
   create(req, res) {
-    const { bank_soal_id, bab, materi, jenis, pertanyaan, tingkat_kesulitan, skor, pembahasan, tags, opsi } = req.body;
+    const {
+      bank_soal_id, bab, materi, jenis, pertanyaan, tingkat_kesulitan, skor,
+      pembahasan, tags, opsi, stimulus_type, stimulus_content
+    } = req.body;
 
     const bank = db.prepare('SELECT id FROM bank_soal WHERE id = ? AND user_id = ?').get(bank_soal_id, req.user.id);
     if (!bank) return res.status(403).json({ message: 'Bank soal tidak ditemukan' });
 
     const id = uuidv4();
     const maxNomor = db.prepare('SELECT MAX(nomor_urut) as m FROM soal WHERE bank_soal_id = ?').get(bank_soal_id).m || 0;
+    const stimulus = normalizeStimulus(stimulus_type, stimulus_content, { mode: 'manual' });
 
     db.prepare(`
-      INSERT INTO soal (id, bank_soal_id, user_id, bab, materi, jenis, pertanyaan, tingkat_kesulitan, skor, pembahasan, tags, nomor_urut)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, bank_soal_id, req.user.id, bab, materi, jenis || 'pg', pertanyaan, tingkat_kesulitan || 'sedang',
-      skor || 10, pembahasan, JSON.stringify(tags || []), maxNomor + 1);
+      INSERT INTO soal (id, bank_soal_id, user_id, bab, materi, jenis, stimulus_type, stimulus_content, pertanyaan, tingkat_kesulitan, skor, pembahasan, tags, nomor_urut)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, bank_soal_id, req.user.id, bab, materi, jenis || 'pg', stimulus.stimulus_type, stimulus.stimulus_content,
+      pertanyaan, tingkat_kesulitan || 'sedang', skor || 10, pembahasan, JSON.stringify(tags || []), maxNomor + 1);
 
     if (opsi && opsi.length > 0) {
       const insertOpsi = db.prepare('INSERT INTO opsi_jawaban (id, soal_id, label, teks, is_benar, urutan) VALUES (?, ?, ?, ?, ?, ?)');
@@ -81,12 +98,16 @@ export const soalController = {
     const existing = db.prepare('SELECT * FROM soal WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
     if (!existing) return res.status(404).json({ message: 'Soal tidak ditemukan' });
 
-    const { bab, materi, jenis, pertanyaan, tingkat_kesulitan, skor, pembahasan, tags, opsi, is_verified } = req.body;
+    const {
+      bab, materi, jenis, pertanyaan, tingkat_kesulitan, skor, pembahasan,
+      tags, opsi, is_verified, stimulus_type, stimulus_content
+    } = req.body;
+    const stimulus = normalizeStimulus(stimulus_type, stimulus_content, { mode: 'manual' });
 
     db.prepare(`
-      UPDATE soal SET bab=?, materi=?, jenis=?, pertanyaan=?, tingkat_kesulitan=?, skor=?,
+      UPDATE soal SET bab=?, materi=?, jenis=?, stimulus_type=?, stimulus_content=?, pertanyaan=?, tingkat_kesulitan=?, skor=?,
       pembahasan=?, tags=?, is_verified=?, updated_at=datetime('now') WHERE id=?
-    `).run(bab, materi, jenis, pertanyaan, tingkat_kesulitan, skor || 10,
+    `).run(bab, materi, jenis, stimulus.stimulus_type, stimulus.stimulus_content, pertanyaan, tingkat_kesulitan, skor || 10,
       pembahasan, JSON.stringify(tags || []), is_verified ? 1 : 0, req.params.id);
 
     // Update opsi

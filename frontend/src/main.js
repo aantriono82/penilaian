@@ -5,6 +5,7 @@ import 'vue-toastification/dist/index.css'
 import App from './App.vue'
 import router from './router/index.js'
 import './assets/main.css'
+import { useThemeStore } from './stores/theme.js'
 
 const app = createApp(App)
 
@@ -17,5 +18,7 @@ app.use(Toast, {
   pauseOnHover: true,
   maxToasts: 5
 })
+
+useThemeStore().initTheme()
 
 app.mount('#app')

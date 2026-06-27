@@ -1,14 +1,15 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
+import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { initDB } from './db/init.js';
 import routes from './routes/index.js';
+import { getLocalStorageDir, getStorageProvider } from './utils/storage.js';
 
-dotenv.config();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, '../.env') });
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -24,11 +25,12 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Static file serving for uploaded images
-const STORAGE_DIR = path.join(__dirname, '../data/storage');
-app.use('/api/uploads', express.static(STORAGE_DIR, {
-  maxAge: '30d', // Cache 30 hari
-  immutable: true
-}));
+if (getStorageProvider() === 'local') {
+  app.use('/api/uploads', express.static(getLocalStorageDir(), {
+    maxAge: '30d',
+    immutable: true
+  }));
+}
 
 // Request logging (simple)
 app.use((req, res, next) => {

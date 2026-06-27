@@ -1,12 +1,11 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-dotenv.config();
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, '../../.env') });
 const DB_PATH = process.env.DB_PATH || './data/atiga-asesmen.db';
 
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -85,13 +84,29 @@ export function initDB() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS stimulus (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bank_soal_id TEXT NOT NULL,
+      judul TEXT,
+      konten TEXT NOT NULL,
+      tipe_sumber TEXT NOT NULL CHECK(tipe_sumber IN ('generated','uploaded')),
+      nama_file_asli TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (bank_soal_id) REFERENCES bank_soal(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS soal (
       id TEXT PRIMARY KEY,
       bank_soal_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
+      stimulus_id INTEGER,
       bab TEXT NOT NULL,
       materi TEXT NOT NULL,
       jenis TEXT NOT NULL CHECK(jenis IN ('pg', 'pgk', 'essay', 'isian', 'benar_salah', 'menjodohkan')),
+      stimulus_type TEXT NOT NULL DEFAULT 'none' CHECK(stimulus_type IN ('none', 'text', 'image', 'table', 'diagram', 'graph')),
+      stimulus_content TEXT,
       pertanyaan TEXT NOT NULL,
       tingkat_kesulitan TEXT NOT NULL DEFAULT 'sedang' CHECK(tingkat_kesulitan IN ('mudah', 'sedang', 'sulit')),
       skor INTEGER NOT NULL DEFAULT 10,
@@ -104,6 +119,7 @@ export function initDB() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (bank_soal_id) REFERENCES bank_soal(id) ON DELETE CASCADE,
+      FOREIGN KEY (stimulus_id) REFERENCES stimulus(id) ON DELETE SET NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -152,6 +168,7 @@ export function initDB() {
     CREATE INDEX IF NOT EXISTS idx_soal_bank ON soal(bank_soal_id);
     CREATE INDEX IF NOT EXISTS idx_soal_user ON soal(user_id);
     CREATE INDEX IF NOT EXISTS idx_soal_jenis ON soal(jenis);
+    CREATE INDEX IF NOT EXISTS idx_stimulus_bank ON stimulus(bank_soal_id);
     CREATE INDEX IF NOT EXISTS idx_generate_history_user ON generate_history(user_id);
     CREATE INDEX IF NOT EXISTS idx_opsi_soal ON opsi_jawaban(soal_id);
   `);
@@ -165,6 +182,23 @@ export function initDB() {
     db.exec(`ALTER TABLE soal ADD COLUMN image_prompt TEXT`);
     console.log('✅ Migration: added image_prompt column');
   } catch {}
+  try {
+    db.exec(`ALTER TABLE soal ADD COLUMN stimulus_type TEXT NOT NULL DEFAULT 'none' CHECK(stimulus_type IN ('none', 'text', 'image', 'table', 'diagram', 'graph'))`);
+    console.log('✅ Migration: added stimulus_type column');
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE soal ADD COLUMN stimulus_content TEXT`);
+    console.log('✅ Migration: added stimulus_content column');
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE soal ADD COLUMN stimulus_id INTEGER`);
+    console.log('✅ Migration: added stimulus_id column');
+  } catch {}
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_soal_stimulus ON soal(stimulus_id)`);
+    console.log('✅ Index: idx_soal_stimulus ready');
+  } catch {}
 
   // Create uploaded_files table for file upload tracking
   db.exec(`
@@ -175,12 +209,22 @@ export function initDB() {
       original_name TEXT NOT NULL,
       mime_type TEXT NOT NULL,
       size INTEGER NOT NULL,
+      storage_provider TEXT NOT NULL DEFAULT 'local',
+      storage_key TEXT,
       url TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_uploaded_files_user ON uploaded_files(user_id);
   `);
+  try {
+    db.exec(`ALTER TABLE uploaded_files ADD COLUMN storage_provider TEXT NOT NULL DEFAULT 'local'`);
+    console.log('✅ Migration: added uploaded_files.storage_provider column');
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE uploaded_files ADD COLUMN storage_key TEXT`);
+    console.log('✅ Migration: added uploaded_files.storage_key column');
+  } catch {}
 
   console.log('✅ Database schema initialized');
 }
